@@ -1,28 +1,28 @@
 Origin: Meeting Recorder
 Label: Meeting Recorder
 Codename: stable
-Date: Thu, 02 Jul 2026 09:39:43 UTC
+Date: Thu, 02 Jul 2026 09:43:46 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Meeting Recorder APT repository
 MD5Sum:
- f3d892bc039b08b286fa8044258dac83 822 main/binary-amd64/Packages
- 1b8ab52d5487666c03298c0692252318 532 main/binary-amd64/Packages.gz
+ 5f68463129e7fccf38379f903eff7bf1 822 main/binary-amd64/Packages
+ 3f40374090f3c13b7a0ea9cbc616e1ac 532 main/binary-amd64/Packages.gz
  17d185771c71cb5d97cc0e53538eb589 130 main/binary-amd64/Release
- f3d892bc039b08b286fa8044258dac83 822 main/binary-arm64/Packages
- 1b8ab52d5487666c03298c0692252318 532 main/binary-arm64/Packages.gz
+ 5f68463129e7fccf38379f903eff7bf1 822 main/binary-arm64/Packages
+ 3f40374090f3c13b7a0ea9cbc616e1ac 532 main/binary-arm64/Packages.gz
  f6ec9ac683f5bfd22513003b99ad879d 130 main/binary-arm64/Release
 SHA1:
- b8ebae706a735b5db18736d1cc6a596b54e1dafc 822 main/binary-amd64/Packages
- 38bb45fc7a98e24d9b7372da16c80a05fb407af8 532 main/binary-amd64/Packages.gz
+ 3b13f7c083088060cabbafeca095bcfc19af8ebf 822 main/binary-amd64/Packages
+ 3f95e2a788aafce5c27e38f2b1135bf12f6d92e8 532 main/binary-amd64/Packages.gz
  6d96455003a8d856ac1ed26320b011ccbb3e3102 130 main/binary-amd64/Release
- b8ebae706a735b5db18736d1cc6a596b54e1dafc 822 main/binary-arm64/Packages
- 38bb45fc7a98e24d9b7372da16c80a05fb407af8 532 main/binary-arm64/Packages.gz
+ 3b13f7c083088060cabbafeca095bcfc19af8ebf 822 main/binary-arm64/Packages
+ 3f95e2a788aafce5c27e38f2b1135bf12f6d92e8 532 main/binary-arm64/Packages.gz
  b788cfecc5647cc5674ea0be2c092ef7aac9c1f1 130 main/binary-arm64/Release
 SHA256:
- 58ae1e0ee3a9c4ecc184fdd958d7421731fe0ae67478643a62933a4f6ff39a58 822 main/binary-amd64/Packages
- c154ebfbffebb35aafdc176729e5ef0cd1c7d0ece6f88afaec3502cf63c88366 532 main/binary-amd64/Packages.gz
+ a11fba8947ca804f88bdbd97c4d90a895540b2b57c0dcf029218e5a4a223a3f5 822 main/binary-amd64/Packages
+ 06a34dca0555c57ff5cf1b43e10173163afa2bf5f9ab86652b4eb9aae8dac36f 532 main/binary-amd64/Packages.gz
  cb47744016fef55a364c52a4cbab776a3fcc31238d729cc091ba4aa1ed558c29 130 main/binary-amd64/Release
- 58ae1e0ee3a9c4ecc184fdd958d7421731fe0ae67478643a62933a4f6ff39a58 822 main/binary-arm64/Packages
- c154ebfbffebb35aafdc176729e5ef0cd1c7d0ece6f88afaec3502cf63c88366 532 main/binary-arm64/Packages.gz
+ a11fba8947ca804f88bdbd97c4d90a895540b2b57c0dcf029218e5a4a223a3f5 822 main/binary-arm64/Packages
+ 06a34dca0555c57ff5cf1b43e10173163afa2bf5f9ab86652b4eb9aae8dac36f 532 main/binary-arm64/Packages.gz
  33bed45baa993b3c53cae5c6913ef5c9eb7f49801ae12922eb4113d3b821169a 130 main/binary-arm64/Release
