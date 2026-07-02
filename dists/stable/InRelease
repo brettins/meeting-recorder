@@ -4,44 +4,44 @@ Hash: SHA512
 Origin: Meeting Recorder
 Label: Meeting Recorder
 Codename: stable
-Date: Thu, 02 Jul 2026 15:56:35 UTC
+Date: Thu, 02 Jul 2026 16:46:08 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Meeting Recorder APT repository
 MD5Sum:
- 7d62dd6b91c0f0950a44618ae2f68c07 823 main/binary-amd64/Packages
- 5f6dff6e78f0cc7d6b9e597d62ff8cb4 535 main/binary-amd64/Packages.gz
+ 126b6d4dcbdd5624e22a950cc4ee4988 823 main/binary-amd64/Packages
+ 3d65e28e59475481eaf3ff6f3c372fdc 532 main/binary-amd64/Packages.gz
  17d185771c71cb5d97cc0e53538eb589 130 main/binary-amd64/Release
- 7d62dd6b91c0f0950a44618ae2f68c07 823 main/binary-arm64/Packages
- 5f6dff6e78f0cc7d6b9e597d62ff8cb4 535 main/binary-arm64/Packages.gz
+ 126b6d4dcbdd5624e22a950cc4ee4988 823 main/binary-arm64/Packages
+ 3d65e28e59475481eaf3ff6f3c372fdc 532 main/binary-arm64/Packages.gz
  f6ec9ac683f5bfd22513003b99ad879d 130 main/binary-arm64/Release
 SHA1:
- 0b48ad6eacdcf7651388a69637b9d11602ca4448 823 main/binary-amd64/Packages
- 02ac1e965259ed099e737c66b6fafe859b5d802e 535 main/binary-amd64/Packages.gz
+ cebaac644675556caecf61381b5dac750997ac6a 823 main/binary-amd64/Packages
+ 0db808b8698060065b2814b64d9a6ea83061d204 532 main/binary-amd64/Packages.gz
  6d96455003a8d856ac1ed26320b011ccbb3e3102 130 main/binary-amd64/Release
- 0b48ad6eacdcf7651388a69637b9d11602ca4448 823 main/binary-arm64/Packages
- 02ac1e965259ed099e737c66b6fafe859b5d802e 535 main/binary-arm64/Packages.gz
+ cebaac644675556caecf61381b5dac750997ac6a 823 main/binary-arm64/Packages
+ 0db808b8698060065b2814b64d9a6ea83061d204 532 main/binary-arm64/Packages.gz
  b788cfecc5647cc5674ea0be2c092ef7aac9c1f1 130 main/binary-arm64/Release
 SHA256:
- d25e061f1605903bdda85374468cce28bfbd6230493bf4f2864f8b4169ca34f7 823 main/binary-amd64/Packages
- 205db69316c9b4472122285bc01b2deceeb9453a025376015f8073e2a45d0849 535 main/binary-amd64/Packages.gz
+ 7c7705fb67f201d5fe66410f5b2e13b611f2b3d1c51bd707852d1bd419ea1a98 823 main/binary-amd64/Packages
+ e1dbaad2804cb591a320e0d454eefe6fa10b1789f21047d7358a49e6ac688ef2 532 main/binary-amd64/Packages.gz
  cb47744016fef55a364c52a4cbab776a3fcc31238d729cc091ba4aa1ed558c29 130 main/binary-amd64/Release
- d25e061f1605903bdda85374468cce28bfbd6230493bf4f2864f8b4169ca34f7 823 main/binary-arm64/Packages
- 205db69316c9b4472122285bc01b2deceeb9453a025376015f8073e2a45d0849 535 main/binary-arm64/Packages.gz
+ 7c7705fb67f201d5fe66410f5b2e13b611f2b3d1c51bd707852d1bd419ea1a98 823 main/binary-arm64/Packages
+ e1dbaad2804cb591a320e0d454eefe6fa10b1789f21047d7358a49e6ac688ef2 532 main/binary-arm64/Packages.gz
  33bed45baa993b3c53cae5c6913ef5c9eb7f49801ae12922eb4113d3b821169a 130 main/binary-arm64/Release
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEEHfjTLFriB1Wucq4B6cV3Y7Q498QFAmpGijQACgkQ6cV3Y7Q4
-98QKow/9Fdu3s4UOKVZ6mSDuD1yqwexUyJQBCdLkpPknNP0/FkcO5sX9K3Eivlak
-Bn9eCBxKeMIlznPI4RiM1d+kbpNx7QauCze4gx2rZskcoeUiL6isjgAuu2nd43pq
-43XL99K+GRQ6dmIC5Og4nNJJW1EoWOKRAMwWEYi1MWuacKujY3RGOmiTaMh/c2B9
-D82pj4Of2ljpfuXMSEveb/0KHaW0kRyfX1yDZKRxCkTtQswVvgp2XVZwuzaBlgMu
-ldU9cvGf6Tm/5ebd8GsWp6LwrkRqUjma4JdaFDmkaVuzr7sEYEIpbsqlEs3A8uKK
-XgSI71Nd6FrFeWIfrxp0HbW2tzOdRqb8LVrzPULbG+7cVn98Ohr/3xWMvMONcP9D
-+b+67LgJf0KsDvfFAfJfaMH9hzjF6V0erwUm+rXtVBgAVFtE4y08dSoHcHk/RBKN
-BPrpXUoTE33WSV6RPVaGeurS4bsF4fU4vUmvaVEdt4V2y1ZfVbJJiWGEf6PbfJio
-KzpkkmqcStiqZ6+ypgGChsLMFfnTBWdNW8ZP4Bf75xrrEaii2QxGNYXKZNd9GxSG
-y2qvilPKp5lcLS42d528ow+JvTmSIGWQoJbSUw1U3EqDRTTfmXdzVF1Cmqn7cNVi
-bZHk3JSLy/Q09jKm5hfONsp4kRhL6ubC7NF7/yxbIH/GNl8x4i8=
-=F5qx
+iQIzBAEBCgAdFiEEHfjTLFriB1Wucq4B6cV3Y7Q498QFAmpGldAACgkQ6cV3Y7Q4
+98T9yQ//T+xyLemZNEUd6U0tO5OZ1RTgTGvuA4c+SmWRkEqlH0Qg66qhSfb/M6sj
+e/ZEZrOh/sHdoPPTo7p45nl0AJgW6wEfaDfMVol17jiYtn0ZhRxMM84208ziGz/r
+CqemJDLON0QKf5khHqDgbbQD8AWkbk+i856j2ttt5qkMwcAgMgT6pW46LXUpvFwT
+6VyRM+oMhHkzFjTBue6DRgwCdlo4osg9maQqXT+Tg/E0AyXHZnz888884fZEAnRr
+hLfZt6Y7Sxmtny0yUfCzAiylxB4LeIwuNyoX4MlH4gt+cRbdDFRmU7h17N6zQzqL
+lfJdb8rs/Hm9yOBmsWcfI3QLxXrk5GPY28tflCMn9QQiSLDxMwkKdVYrsRKWNabe
+/WmYYbICUXffmLP22sLsJO6gf7aY3HCYt+kotHPjhELPrrYxoirsIIjdYekKq6sw
+N7yJULPjMz+k+tlUFpeydexW1ZFiSI6zu1F4sSx9KqDcR9RNxy1A9LOb34m0tTv8
+J8J0VE4TTyFqH7lmq4XgT2OHOLqXe7+W0RTS/DRZVwJ8KMOMA6segv42TUwdPFA5
+s6JB35vzRuU18smPk/Szn9J5v3L5Iu30yHaicDBCONabZP7nxHno+N2jIPSkSgIO
+M0SLwI19/ykug5rqQG38J8exKmpB808f7RYzYWGkWkPH4/S0O3k=
+=BfHC
 -----END PGP SIGNATURE-----
