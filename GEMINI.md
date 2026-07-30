@@ -61,6 +61,17 @@ Skip new tests only when a change genuinely has no testable behavior (docs, comm
 
 ---
 
+## Never break user space — IMPORTANT
+
+Backward compatibility is not optional. Every change must satisfy **both** of these:
+
+- **Existing installs keep working.** A user who already has an older version installed must be able to upgrade without their setup breaking — don't invalidate existing config, stored API keys, on-disk recordings/metadata, or packaging state. When a format or default has to change, ship a migration or a compatible fallback rather than a breaking change.
+- **Clean installs still work.** The change must also install and run correctly on a fresh system with no prior version present.
+
+If a change genuinely cannot preserve compatibility, call it out explicitly and provide a migration path — never silently break an existing installation.
+
+---
+
 ## Project Overview
 
 This repository is a monorepo containing two applications: a Linux desktop applet and a native Android app. Both applications record audio, transcribe it, and generate structured notes using Google Gemini. The apps share the same storage format, allowing recordings to be accessed from both platforms.
