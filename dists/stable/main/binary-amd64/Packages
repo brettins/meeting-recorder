@@ -1,5 +1,5 @@
 Package: meeting-recorder
-Version: 1.1.32
+Version: 1.1.33
 Architecture: all
 Depends: python3 (>= 3.10), python3-venv, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, libnotify4, libnotify-bin, ffmpeg, pulseaudio-utils, curl, gpg
 Recommends: pipewire-pulse
@@ -7,11 +7,11 @@ Suggests: libcublas12, libcudart12
 Maintainer: Meeting Recorder <noreply@github.com>
 Priority: optional
 Section: utils
-Filename: pool/main/m/meeting-recorder/meeting-recorder_1.1.32_all.deb
-Size: 103000
-SHA256: 0506ffc10a3f4b226ff639cbf408f5842e1beb4c6cdee8deed9f595890e3249b
-SHA1: db4782504a9f226a84b0c82d067a47a5e8e848c9
-MD5sum: ad82c9eedee791c947d16dcf1e1c7206
+Filename: pool/main/m/meeting-recorder/meeting-recorder_1.1.33_all.deb
+Size: 111744
+SHA256: 734f805d2a84579e6c57ca67b66bbd5497c4774978e6445752e16bcbb46b6560
+SHA1: 0168861de15763a9ce47d12a96736f621911cb0c
+MD5sum: 5a5e887ec54cd6c9dcade61ff3c51f13
 Description: Meeting recorder with AI transcription and summarization
  Records meetings, transcribes audio using Google Gemini or local Whisper,
  and generates structured notes with Gemini or local Ollama.
