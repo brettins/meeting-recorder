@@ -69,5 +69,19 @@ def test_max_tokens_finish_reason_still_raises():
     from google.genai import types
 
     response = _response("partial…", finish_reason=types.FinishReason.MAX_TOKENS)
-    with pytest.raises(RuntimeError, match="truncated"):
+    with pytest.raises(RuntimeError, match="hit the .*output limit"):
         _require_text(response, "transcription")
+
+
+def test_truncation_message_names_no_retired_models():
+    """The advice must not point at models the API has withdrawn."""
+    pytest.importorskip("google.genai")
+    from google.genai import types
+
+    response = _response("partial…", finish_reason=types.FinishReason.MAX_TOKENS)
+    with pytest.raises(RuntimeError) as exc:
+        _require_text(response, "transcription")
+    text = str(exc.value)
+    for retired in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"):
+        assert retired not in text, f"error text still recommends retired {retired}"
+    assert "Settings" in text  # points somewhere the user can act
