@@ -37,3 +37,20 @@ def error_presentation(message: str) -> Presentation:
     if any(marker in lowered for marker in _ACTIONABLE_MARKERS):
         return "dialog"
     return "toast"
+
+
+def error_summary(text: str, limit: int = 80) -> str:
+    """One-line, ellipsised form of *text* for a row subtitle.
+
+    A job row has a single line to show a failure in, but the whole message
+    still has to be reachable — see the "details" action in
+    ``job.actions_for_status``. This only shortens; it never drops the tail
+    silently without the ellipsis marking it.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    line = stripped.splitlines()[0]
+    if len(line) <= limit:
+        return line
+    return line[: limit - 1] + "\u2026"

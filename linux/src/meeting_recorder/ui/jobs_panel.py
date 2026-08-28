@@ -14,8 +14,9 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, Gdk, GLib, Gtk
 
+from ..core.errors import error_summary
 from ..core.job import Job, actions_for_status
 from ..core.job import JobStatus as JobStatus
 from ..utils.glib_bridge import assert_main_thread
@@ -102,8 +103,11 @@ class JobsPanel:
                 row.set_subtitle("Done")
             elif job.status is JobStatus.ERROR:
                 status_icon.set_from_icon_name("dialog-error-symbolic")
-                err = (job.error_msg or "Error")[:60]
-                row.set_subtitle(f"Error: {err}")
+                full = job.error_msg or "Error"
+                # The subtitle is one line; the whole message is on the tooltip
+                # and behind the Details button.
+                row.set_subtitle(f"Error: {error_summary(full)}")
+                row.set_tooltip_text(full)
 
         self._rebuild_action_box(job)
 
@@ -148,6 +152,30 @@ class JobsPanel:
 
     # ------------------------------------------------------------------
 
+    def _on_details(self, job: Job) -> None:
+        """Show the entire error message, with a way to copy it."""
+        message = job.error_msg or "No error message was recorded for this job."
+        alert = Gtk.AlertDialog()
+        alert.set_modal(True)
+        alert.set_message(f"{job.label} failed")
+        alert.set_detail(message)
+        alert.set_buttons(["Copy", "Close"])
+        alert.set_default_button(1)
+        alert.set_cancel_button(1)
+
+        def on_choice(dialog, result):
+            try:
+                choice = dialog.choose_finish(result)
+            except GLib.Error:
+                return  # dismissed
+            if choice == 0:
+                display = Gdk.Display.get_default()
+                if display is not None:
+                    display.get_clipboard().set(message)
+
+        root = self.widget.get_root()
+        alert.choose(root if isinstance(root, Gtk.Window) else None, None, on_choice)
+
     def _rebuild_action_box(self, job: Job) -> None:
         widgets = self._rows.get(job.job_id)
         if not widgets:
@@ -159,6 +187,7 @@ class JobsPanel:
             "cancel": ("Cancel", self._on_cancel),
             "open_folder": ("Open Folder", self._on_open_folder),
             "retry": ("Retry", self._on_retry),
+            "details": ("Details", self._on_details),
         }
         for action in actions_for_status(job.status):
             if action == "dismiss":

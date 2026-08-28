@@ -20,6 +20,7 @@ This repository is a monorepo with two independent apps — a Linux desktop appl
 - **Summarize** into structured Markdown notes with Google Gemini or local Ollama
 - **Summarize from the library** — re-run summarization for any past meeting from the meetings browser
 - **Local models** — run fully offline with no API key required
+- **Readable failures** — a failed job shows the first line of the error in its row, with a **Details** button for the full message and a Copy button; the whole text is also on the row's tooltip
 - **Customizable prompts** — edit transcription and summarization prompts in Settings
 - **Tags** — organise meetings with your own colour-coded tags. Tag a recording **before it starts** from the tag button in the Record tab's title row, or afterwards from the tag button on its row in the library. Filter the library to one tag (or to untagged meetings), and add, rename, recolour or delete tags from the manage-tags button in the library toolbar. Tags are written when the recording folder is created, so they survive a failed transcription, and they live in that meeting's `meeting.json` so they travel with the folder.
 - **System tray** integration — a StatusNotifierItem (SNI) exposed over D-Bus; left-click opens the window where the host supports it, otherwise opens the menu

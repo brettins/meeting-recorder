@@ -39,8 +39,14 @@ class TestActionsForStatus:
     def test_done_offers_open_folder_and_dismiss(self):
         assert actions_for_status(JobStatus.DONE) == ("open_folder", "dismiss")
 
-    def test_error_offers_retry_and_dismiss(self):
-        assert actions_for_status(JobStatus.ERROR) == ("retry", "dismiss")
+    def test_error_offers_details_retry_and_dismiss(self):
+        # "details" leads: the subtitle shows one line, and API errors put the
+        # actionable part at the end, so the full text must be reachable.
+        assert actions_for_status(JobStatus.ERROR) == ("details", "retry", "dismiss")
+
+    def test_only_errored_jobs_offer_details(self):
+        assert "details" not in actions_for_status(JobStatus.PROCESSING)
+        assert "details" not in actions_for_status(JobStatus.DONE)
 
     def test_every_status_has_at_least_one_action(self):
         for status in JobStatus:

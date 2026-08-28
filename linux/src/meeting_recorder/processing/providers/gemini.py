@@ -27,6 +27,17 @@ _POLL_TIMEOUT = 300  # 5 minutes
 # Temperature for transcription: 0 = deterministic, sticks closely to spoken words
 _TRANSCRIPTION_TEMPERATURE = 0
 
+# Gemini 3 models reason before answering, and those thinking tokens are drawn
+# from the same budget as the output. Transcription is mechanical, so the
+# reasoning adds nothing and is measurably expensive: an unbounded run spent
+# ~2,000 thinking tokens to emit ~135 tokens of transcript, which exhausts the
+# output limit on a long recording and fails the job as "truncated".
+#
+# A small cap rather than 0: several models (gemini-pro-latest,
+# gemini-flash-lite-latest) reject a budget of 0 outright, while every model the
+# app offers accepts 128. Capping keeps one code path for all of them.
+_TRANSCRIPTION_THINKING_BUDGET = 128
+
 
 # Request the maximum output tokens so long transcripts are never silently truncated.
 # The API caps this at the model's own limit, so it is safe to set high.
@@ -56,10 +67,10 @@ def _require_text(response: Any, context: str) -> str:
 
                 if finish_reason == types.FinishReason.MAX_TOKENS:
                     _truncation_error = RuntimeError(
-                        f"Gemini output was truncated ({context}): "
-                        "the response hit the token limit. "
-                        "Try a shorter recording, or switch to gemini-2.5-flash / gemini-2.5-pro "
-                        "which support up to 65,536 output tokens."
+                        f"Gemini stopped early during {context}: the response hit the "
+                        f"{_MAX_OUTPUT_TOKENS:,}-token output limit. Split the recording into "
+                        "shorter parts, or pick a model with a larger output limit in "
+                        "Settings \u2192 Models."
                     )
             except ImportError:
                 pass
@@ -165,6 +176,7 @@ class GeminiProvider:
                     config={
                         "temperature": _TRANSCRIPTION_TEMPERATURE,
                         "max_output_tokens": _MAX_OUTPUT_TOKENS,
+                        "thinking_config": {"thinking_budget": _TRANSCRIPTION_THINKING_BUDGET},
                         "http_options": {"timeout": self._generate_timeout_ms},
                     },
                 ),
