@@ -4,13 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git workflow — IMPORTANT
 
-> **Fork-local override (brettins fork).** This is a personal hobby fork, not the
-> upstream project. In this repo the agent may merge its own pull requests without
-> asking — points 4 and 5 below do not apply here. Still branch and open a PR for
-> each change so the history stays reviewable, then merge it. Everything else in
-> this file (docs in the same PR, meaningful tests, never break user space) still
-> holds. This paragraph is fork-local: drop it from any branch sent upstream, where
-> the original rule applies.
+> **Fork-local override (brettins fork).** This is a personal hobby fork and
+> **GitHub is only a backup** — the work happens locally. Points 3, 4 and 5 below
+> do not apply here:
+>
+> - Branch for each change, then **merge locally into `main`** (`git switch main &&
+>   git merge --no-ff <branch>`). A PR is optional, not required.
+> - `.githooks/post-merge` rebuilds the `.deb` into `dist/` whenever `main` moves;
+>   enable it once per clone with `git config core.hooksPath .githooks`. Installing
+>   still needs the user's sudo.
+> - Pushing `main` to the backup remote is **blocked by a user-level hook**
+>   (`~/.claude/hooks/block-protected-push.sh`), which the agent must not work
+>   around. Push feature branches; the user pushes `main` themselves.
+>
+> Everything else still holds — docs in the same change, meaningful tests, never
+> break user space, and no direct commits to `main` without a branch. Fork-local:
+> drop this paragraph from any branch sent upstream.
 
 
 **Never push directly to `main`.** Always work on a feature branch and open a pull request so the GitHub Actions CI pipeline can run tests before merging.
