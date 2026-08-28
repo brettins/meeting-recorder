@@ -31,6 +31,13 @@ class IdComboRow(Adw.ComboRow):
             return self._ids[i]
         return None
 
+    def set_items(self, ids: list[str], labels: list[str]) -> None:
+        """Replace the backing items, keeping the current selection if it survives."""
+        previous = self.get_active_id()
+        self._ids = list(ids)
+        self.set_model(Gtk.StringList.new(labels))
+        self.set_active_id(previous)
+
     def set_active_id(self, id_: str | None) -> None:
         if id_ in self._ids:
             self.set_selected(self._ids.index(id_))
