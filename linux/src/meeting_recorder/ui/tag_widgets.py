@@ -201,12 +201,12 @@ class TagManageDialog(Adw.Window):
         row.set_margin_start(10)
         row.set_margin_end(10)
 
-        colour_btn = Gtk.MenuButton()
-        colour_btn.add_css_class("flat")
-        colour_btn.set_tooltip_text("Change colour")
-        colour_btn.set_child(make_tag_swatch(tag.color))
-        colour_btn.set_popover(self._colour_popover(tag))
-        row.append(colour_btn)
+        color_btn = Gtk.MenuButton()
+        color_btn.add_css_class("flat")
+        color_btn.set_tooltip_text("Change colour")
+        color_btn.set_child(make_tag_swatch(tag.color))
+        color_btn.set_popover(self._color_popover(tag))
+        row.append(color_btn)
 
         entry = Gtk.Entry(text=tag.name, hexpand=True)
         entry.set_max_length(40)
@@ -224,26 +224,26 @@ class TagManageDialog(Adw.Window):
         lb_row.set_child(row)
         return lb_row
 
-    def _colour_popover(self, tag: Tag) -> Gtk.Popover:
+    def _color_popover(self, tag: Tag) -> Gtk.Popover:
         pop = Gtk.Popover()
         grid = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         grid.set_margin_top(8)
         grid.set_margin_bottom(8)
         grid.set_margin_start(8)
         grid.set_margin_end(8)
-        for colour in TAG_COLORS:
+        for color in TAG_COLORS:
             btn = Gtk.Button()
             btn.add_css_class("flat")
-            btn.set_child(make_tag_swatch(colour))
-            btn.set_tooltip_text(colour.capitalize())
-            btn.connect("clicked", self._on_recolor, tag.name, colour, pop)
+            btn.set_child(make_tag_swatch(color))
+            btn.set_tooltip_text(color.capitalize())
+            btn.connect("clicked", self._on_recolor, tag.name, color, pop)
             grid.append(btn)
         pop.set_child(grid)
         return pop
 
-    def _on_recolor(self, _btn: Gtk.Button, name: str, colour: str, pop: Gtk.Popover) -> None:
+    def _on_recolor(self, _btn: Gtk.Button, name: str, color: str, pop: Gtk.Popover) -> None:
         pop.popdown()
-        self._tags = recolor_tag(self._tags, name, colour)
+        self._tags = recolor_tag(self._tags, name, color)
         self._commit()
 
     def _on_rename(self, entry: Gtk.Entry, old: str) -> None:

@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 # Secret Service keyring. Deliberately not a plausible key value.
 KEYRING_SENTINEL = "@keyring"
 
-# Shortest plausible Google API key. Deliberately loose: Google has shipped
-# several key formats and a prefix check produced false warnings on valid keys.
+# Shortest plausible Google API key. Deliberately loose, since Google has
+# shipped several key formats and lengths.
 MIN_GEMINI_KEY_LENGTH = 20
 
 _keyring_store: KeyringStore | None = None
@@ -203,10 +203,8 @@ def gemini_key_warning(config: dict[str, Any]) -> str | None:
     """Return a human-readable warning if the configured Gemini key looks wrong.
 
     Pure (unit-testable). Only a *format* check — no network call. Google issues
-    keys in more than one format, so this deliberately checks only for the two
-    things that are always a mistake: an implausibly short value, and embedded
-    whitespace from a broken paste. Prefix matching is not used — it produced
-    false warnings on perfectly valid keys.
+    keys in more than one format and length, so this only flags what is always a
+    mistake: embedded whitespace (a broken paste) or an implausibly short value.
     """
     uses_gemini = "gemini" in (
         config.get("transcription_service", "gemini"),
