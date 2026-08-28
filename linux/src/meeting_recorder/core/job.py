@@ -45,10 +45,14 @@ def actions_for_status(status: JobStatus) -> tuple[str, ...]:
     """Which action buttons a job row shows for *status*.
 
     Returns identifiers, not widgets, so the policy is testable headless:
-    "cancel" | "open_folder" | "retry" | "dismiss".
+    "cancel" | "open_folder" | "retry" | "dismiss" | "details".
+
+    An errored row leads with "details": the subtitle can only show the first
+    line of a failure, and API errors put the part that says what to do at the
+    end. Without this the useful half of the message is unreachable.
     """
     if status is JobStatus.PROCESSING:
         return ("cancel",)
     if status is JobStatus.DONE:
         return ("open_folder", "dismiss")
-    return ("retry", "dismiss")
+    return ("details", "retry", "dismiss")

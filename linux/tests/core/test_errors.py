@@ -2,7 +2,7 @@
 
 import pytest
 
-from meeting_recorder.core.errors import error_presentation
+from meeting_recorder.core.errors import error_presentation, error_summary
 
 
 class TestErrorPresentation:
@@ -33,3 +33,31 @@ class TestErrorPresentation:
 
     def test_classification_is_case_insensitive(self):
         assert error_presentation("GEMINI API KEY MISSING") == "dialog"
+
+
+class TestErrorSummary:
+    """The row subtitle shortens a failure; the Details action shows all of it."""
+
+    def test_short_message_is_unchanged(self):
+        assert error_summary("Bad API key") == "Bad API key"
+
+    def test_only_the_first_line_is_used(self):
+        assert error_summary("Upload failed\nTraceback...\n  more") == "Upload failed"
+
+    def test_long_line_is_ellipsised_not_silently_cut(self):
+        out = error_summary("x" * 200)
+        assert len(out) == 80
+        assert out.endswith("…")
+
+    def test_blank_message_is_empty(self):
+        assert error_summary("   \n  ") == ""
+
+    def test_limit_is_configurable(self):
+        assert error_summary("abcdef", limit=4) == "abc…"
+
+    def test_real_gemini_error_keeps_the_useful_head(self):
+        msg = (
+            "Gemini stopped early during transcription: the response hit the "
+            "65,536-token output limit. Split the recording into shorter parts."
+        )
+        assert error_summary(msg).startswith("Gemini stopped early during transcription")
