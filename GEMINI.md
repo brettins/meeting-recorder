@@ -105,6 +105,8 @@ The project is structured as a monorepo with two main directories:
 
 Both apps use Google Gemini for transcription and summarization. The Linux app also supports local transcription with Whisper (`faster-whisper`, NVIDIA/CPU) or whisper.cpp (built from source for AMD/Apple/NVIDIA/CPU GPU acceleration) and local summarization with Ollama. These local engines are not in the base install — they are installed on demand from Settings → Models, keeping a fresh install Gemini-only. The Linux app runs on both x86_64 and arm64.
 
+The Linux library supports **tags**: a global registry of colour-coded tags in `config.json`, per-meeting assignments in each meeting's `meeting.json`, chips in the meeting list, and a tag filter in the library toolbar. Tag colours are stored as palette names and resolved through `assets/style.css`. The Gemini model dropdown is populated from the API (`services/gemini_models.py`, day-long cache, static fallback) rather than a hardcoded list. See CLAUDE.md for details.
+
 The Android app records in a foreground service so capture survives interruptions, warns (instead of transcribing) when the OS silences the mic mid-call, and keeps failed/crashed recordings in the library so they can be re-processed. Transcript and notes can be generated, or notes regenerated, directly from a meeting's detail screen, and external audio files can be imported via "Use Existing Recording."
 
 ## Building and Running

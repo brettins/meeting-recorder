@@ -6,11 +6,12 @@ import json
 import logging
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ..config.tags import parse_meeting_tags
 from .filename import sanitize_title
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class Meeting:
     has_transcript: bool
     has_audio: bool
     duration_seconds: int | None  # audio duration in seconds, None if unknown
+    tags: list[str] = field(default_factory=list)  # tag names from meeting.json
 
 
 def find_audio_file(meeting_path: Path) -> Path | None:
@@ -79,7 +81,11 @@ def scan_meetings(output_folder: str) -> list[Meeting]:
         if duration is None and audio_files:
             duration = _probe_audio_duration(audio_files[0])
             if duration is not None:
-                write_metadata(meeting_dir, {"duration_seconds": duration})
+                try:
+                    write_metadata(meeting_dir, {"duration_seconds": duration})
+                except OSError as exc:
+                    # Caching the duration is an optimisation — never fail a scan for it.
+                    logger.warning("Could not cache duration for %s: %s", meeting_dir.name, exc)
         meetings.append(
             Meeting(
                 path=meeting_dir,
@@ -90,6 +96,7 @@ def scan_meetings(output_folder: str) -> list[Meeting]:
                 has_transcript=(meeting_dir / "transcript.md").exists(),
                 has_audio=bool(audio_files),
                 duration_seconds=int(duration) if duration is not None else None,
+                tags=parse_meeting_tags(meta.get("tags")),
             )
         )
 
@@ -132,21 +139,43 @@ def _probe_audio_duration(audio_path: Path) -> int | None:
     return None
 
 
-def read_metadata(meeting_path: Path) -> dict[str, Any]:
-    """Read meeting.json from the meeting directory. Returns {} if missing/malformed."""
+def _read_metadata_checked(meeting_path: Path) -> dict[str, Any] | None:
+    """Read meeting.json, distinguishing "no file" from "could not read it".
+
+    Returns {} when there is no metadata file yet, the parsed dict when the file
+    reads cleanly, and None when a file exists but is unreadable or malformed.
+    Callers that are about to overwrite need that distinction; callers that only
+    want values can flatten None to {}.
+    """
     meta_file = meeting_path / "meeting.json"
     if not meta_file.exists():
         return {}
     try:
         data = json.loads(meta_file.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, OSError):
-        return {}
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def read_metadata(meeting_path: Path) -> dict[str, Any]:
+    """Read meeting.json from the meeting directory. Returns {} if missing/malformed."""
+    return _read_metadata_checked(meeting_path) or {}
 
 
 def write_metadata(meeting_path: Path, metadata: dict[str, Any]) -> None:
-    """Write/merge metadata into meeting.json."""
-    existing = read_metadata(meeting_path)
+    """Merge *metadata* into meeting.json.
+
+    Raises OSError rather than overwriting a meeting.json that exists but cannot
+    be read. Merging onto the {} that a failed read produces would replace the
+    meeting's title and duration with only the keys being written, so a
+    transient read error would silently cost the user data — and tags write here
+    on every edit, so that path is now well travelled.
+    """
+    existing = _read_metadata_checked(meeting_path)
+    if existing is None:
+        raise OSError(
+            f"Refusing to overwrite unreadable metadata at {meeting_path / 'meeting.json'}"
+        )
     existing.update(metadata)
     meta_file = meeting_path / "meeting.json"
     meta_file.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -200,3 +229,8 @@ def rename_meeting_path(meeting_dir: Path, new_title: str) -> Path:
 def rename_meeting_dir(meeting: Meeting, new_title: str) -> Path:
     """Rename meeting folder to {HH-MM}_{sanitized_title}. Returns new path."""
     return rename_meeting_path(meeting.path, new_title)
+
+
+def set_meeting_tags(meeting_path: Path, tags: list[str]) -> None:
+    """Persist the tag names assigned to a meeting."""
+    write_metadata(meeting_path, {"tags": parse_meeting_tags(tags)})

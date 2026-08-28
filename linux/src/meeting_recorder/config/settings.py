@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 # Secret Service keyring. Deliberately not a plausible key value.
 KEYRING_SENTINEL = "@keyring"
 
+# Shortest plausible Google API key. Deliberately loose, since Google has
+# shipped several key formats and lengths.
+MIN_GEMINI_KEY_LENGTH = 20
+
 _keyring_store: KeyringStore | None = None
 
 
@@ -96,6 +100,25 @@ def save(config: dict[str, Any], keyring: KeyringStore | None = None) -> None:
             # so the secret is not silently lost by saving unrelated settings.
             to_write["gemini_api_key"] = KEYRING_SENTINEL
     _write(to_write)
+
+
+def update_fields(changes: dict[str, Any]) -> None:
+    """Merge non-secret *changes* into config.json, leaving the API key alone.
+
+    save() round-trips the Gemini key through the Secret Service, and opening a
+    keyring session costs a slow Diffie-Hellman handshake. Settings unrelated to
+    the key go through here instead: the stored ``gemini_api_key`` value (real
+    key or ``@keyring`` sentinel) is left exactly as found on disk, so callers
+    can persist things like tags without paying for — or risking — the keyring.
+    """
+    try:
+        stored = json.loads(_config_path().read_text())
+        if not isinstance(stored, dict):
+            stored = {}
+    except Exception:
+        stored = {}
+    stored.update({k: v for k, v in changes.items() if k != "gemini_api_key"})
+    _write(stored)
 
 
 def _stored_key_is_sentinel() -> bool:
@@ -179,9 +202,9 @@ def api_key_error(config: dict[str, Any]) -> str | None:
 def gemini_key_warning(config: dict[str, Any]) -> str | None:
     """Return a human-readable warning if the configured Gemini key looks wrong.
 
-    Pure (unit-testable). Only a *format* check — no network call. Google API
-    keys start with "AIza"; a mismatch almost always means a paste error, and
-    catching it at save time beats a failed job at the end of a meeting.
+    Pure (unit-testable). Only a *format* check — no network call. Google issues
+    keys in more than one format and length, so this only flags what is always a
+    mistake: embedded whitespace (a broken paste) or an implausibly short value.
     """
     uses_gemini = "gemini" in (
         config.get("transcription_service", "gemini"),
@@ -192,9 +215,14 @@ def gemini_key_warning(config: dict[str, Any]) -> str | None:
     key = (config.get("gemini_api_key") or "").strip()
     if not key:
         return "Gemini is selected as a service but no API key is set."
-    if not key.startswith("AIza") or len(key) < 35:
+    if any(c.isspace() for c in key):
         return (
-            "The Gemini API key does not look like a Google API key "
-            '(expected to start with "AIza"). Double-check it in Settings.'
+            "The Gemini API key contains a space or line break, which usually means "
+            "the paste picked up surrounding text. Double-check it in Settings."
+        )
+    if len(key) < MIN_GEMINI_KEY_LENGTH:
+        return (
+            f"The Gemini API key looks too short ({len(key)} characters). "
+            "Double-check it in Settings."
         )
     return None

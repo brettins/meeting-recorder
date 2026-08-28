@@ -37,6 +37,7 @@ from meeting_recorder.config.defaults import (
 
 from ...core import install_spec as ispec
 from ...core.install_spec import InstallSpec, spec_to_json
+from ...services import gemini_models
 from ...services.ollama_service import OllamaClient
 from ...services.system_installer import (
     CudaInstaller,
@@ -190,20 +191,17 @@ class ModelsPage:
         self._gemini_key_entry.set_text(self._cfg.get("gemini_api_key", ""))
         group.add(self._gemini_key_entry)
 
-        self._gemini_ts_model_combo = IdComboRow(
-            "Transcription model",
-            GEMINI_MODELS,
-            GEMINI_MODELS,
-            self._cfg.get("gemini_transcription_model", GEMINI_MODELS[0]),
-        )
+        # Seeded from the built-in list so the dialog opens without waiting on the
+        # network; refresh_local_model_statuses() swaps in the live catalogue.
+        ts_current = self._cfg.get("gemini_transcription_model", GEMINI_MODELS[0])
+        ss_current = self._cfg.get("gemini_summarization_model", GEMINI_MODELS[0])
+        ts_ids = gemini_models.ensure_selected(list(GEMINI_MODELS), ts_current)
+        ss_ids = gemini_models.ensure_selected(list(GEMINI_MODELS), ss_current)
+
+        self._gemini_ts_model_combo = IdComboRow("Transcription model", ts_ids, ts_ids, ts_current)
         group.add(self._gemini_ts_model_combo)
 
-        self._gemini_ss_model_combo = IdComboRow(
-            "Summarization model",
-            GEMINI_MODELS,
-            GEMINI_MODELS,
-            self._cfg.get("gemini_summarization_model", GEMINI_MODELS[0]),
-        )
+        self._gemini_ss_model_combo = IdComboRow("Summarization model", ss_ids, ss_ids, ss_current)
         group.add(self._gemini_ss_model_combo)
 
         t_ids = [str(m) for m in LLM_TIMEOUT_OPTIONS]
@@ -505,9 +503,21 @@ class ModelsPage:
     # ------------------------------------------------------------------
 
     def refresh_local_model_statuses(self) -> None:
+        threading.Thread(target=self._refresh_gemini_models, daemon=True).start()
         threading.Thread(target=self._check_whisper_statuses, daemon=True).start()
         threading.Thread(target=self._check_whisper_cpp_statuses, daemon=True).start()
         threading.Thread(target=self._check_ollama_statuses, daemon=True).start()
+
+    def _refresh_gemini_models(self) -> None:
+        """Replace the Gemini dropdowns with the catalogue the API actually offers."""
+        key = str(self._cfg.get("gemini_api_key", "") or "")
+        ids = gemini_models.available_models(key)
+        self._dispatch(lambda: self._apply_gemini_models(ids))
+
+    def _apply_gemini_models(self, ids: list[str]) -> None:
+        for combo in (self._gemini_ts_model_combo, self._gemini_ss_model_combo):
+            merged = gemini_models.ensure_selected(ids, combo.get_active_id() or "")
+            combo.set_items(merged, merged)
 
     def _check_whisper_statuses(self) -> None:
         if self._whisper_grid is None:  # engine not installed yet

@@ -137,6 +137,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Empty string means "use the built-in default prompt".
     # Storing the prompt text directly lets the user revert to the default
     # by clearing the field, without needing a separate "use default" flag.
+    # Tag registry: [{"name": ..., "color": <palette name>}, ...]. See config/tags.py.
+    "tags": [],
     "transcription_prompt": "",
     "summarization_prompt": "",
     "title_prompt": "",

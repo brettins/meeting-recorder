@@ -1,0 +1,40 @@
+/*
+ * Application stylesheet.
+ *
+ * Every colour here is a libadwaita *named palette* colour, never a literal.
+ * That keeps one place responsible for what a colour means, and lets tags
+ * follow the system light/dark theme instead of fighting it: the chip tints
+ * its background with the palette hue at low alpha and takes its text colour
+ * from the theme foreground, so it stays legible in both themes.
+ */
+
+.tag-chip {
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-size: 0.78em;
+  font-weight: bold;
+  color: @window_fg_color;
+}
+
+.tag-blue   { background-color: alpha(@blue_3, 0.30); }
+.tag-green  { background-color: alpha(@green_4, 0.30); }
+.tag-yellow { background-color: alpha(@yellow_4, 0.35); }
+.tag-orange { background-color: alpha(@orange_3, 0.30); }
+.tag-red    { background-color: alpha(@red_3, 0.30); }
+.tag-purple { background-color: alpha(@purple_3, 0.30); }
+.tag-brown  { background-color: alpha(@brown_3, 0.30); }
+
+/* The colour swatch shown in the tag editor — same hue, fully saturated. */
+.tag-swatch {
+  border-radius: 9999px;
+  min-width: 18px;
+  min-height: 18px;
+}
+
+.tag-swatch.tag-blue   { background-color: @blue_3; }
+.tag-swatch.tag-green  { background-color: @green_4; }
+.tag-swatch.tag-yellow { background-color: @yellow_4; }
+.tag-swatch.tag-orange { background-color: @orange_3; }
+.tag-swatch.tag-red    { background-color: @red_3; }
+.tag-swatch.tag-purple { background-color: @purple_3; }
+.tag-swatch.tag-brown  { background-color: @brown_3; }

@@ -16,11 +16,12 @@ This repository is a monorepo with two independent apps — a Linux desktop appl
 ### Features
 
 - **Record** system audio + microphone simultaneously, or microphone only
-- **Transcribe** with Google Gemini or local Whisper (timestamped, speaker-labeled transcript)
+- **Transcribe** with Google Gemini or local Whisper (timestamped, speaker-labeled transcript). The Gemini model list is fetched from the API, so retired models never appear and new ones show up without an app update.
 - **Summarize** into structured Markdown notes with Google Gemini or local Ollama
 - **Summarize from the library** — re-run summarization for any past meeting from the meetings browser
 - **Local models** — run fully offline with no API key required
 - **Customizable prompts** — edit transcription and summarization prompts in Settings
+- **Tags** — organise meetings with your own colour-coded tags. Tag a meeting from the tag button on its row in the library, filter the library to one tag (or to untagged meetings), and add, rename, recolour or delete tags from the manage-tags button in the library toolbar. Tags are stored per meeting in `meeting.json`, so they travel with the recording folder.
 - **System tray** integration — a StatusNotifierItem (SNI) exposed over D-Bus; left-click opens the window where the host supports it, otherwise opens the menu
 - **Lightweight background daemon** — the app runs as a small GTK-free tray daemon, so recording, transcription, and model installs keep running in the background even with no window open. Closing the window returns to the tray; reopening (tray "Open" or the app icon) shows the current state (an in-progress model install still shows its progress).
 - **Low memory mode** — by default the window stays loaded in the background so reopening is instant; enable Low memory mode (Settings → General) to unload it on close instead, so the tray daemon idles at roughly a fifth of the memory at the cost of a brief delay when you reopen
