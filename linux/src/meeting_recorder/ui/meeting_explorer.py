@@ -17,16 +17,30 @@ from gi.repository import Adw, Gdk, GLib, Gtk, Pango
 
 from meeting_recorder.config import settings
 from meeting_recorder.config.defaults import TITLE_PROMPT
+from meeting_recorder.config.tags import (
+    UNTAGGED,
+    Tag,
+    color_map,
+    matches_filter,
+    parse_tags,
+    serialize_tags,
+)
+from meeting_recorder.config.tags import (
+    add_tag as tags_add,
+)
 from meeting_recorder.utils.meeting_scanner import (
     Meeting,
     delete_meetings,
     rename_meeting_dir,
     scan_meetings,
+    set_meeting_tags,
     write_metadata,
 )
 
 from ..utils.glib_bridge import idle_call
 from ..utils.gtk_compat import remove_all_children
+from .icons import tag_icon, tag_list_icon
+from .tag_widgets import TagAssignPopover, TagManageDialog, make_tag_chip
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +72,19 @@ class MeetingExplorer(Gtk.Box):
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         toolbar.append(spacer)
+
+        self._filter_ids: list[str | None] = [None]
+        self._suppress_filter_signal = False
+        self._filter_drop = Gtk.DropDown.new_from_strings(["All meetings"])
+        self._filter_drop.set_tooltip_text("Filter meetings by tag")
+        self._filter_drop.connect("notify::selected", self._on_filter_changed)
+        toolbar.append(self._filter_drop)
+
+        manage_btn = Gtk.Button(icon_name=tag_list_icon())
+        manage_btn.add_css_class("flat")
+        manage_btn.set_tooltip_text("Manage tags")
+        manage_btn.connect("clicked", self._on_manage_tags)
+        toolbar.append(manage_btn)
 
         refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
@@ -95,6 +122,10 @@ class MeetingExplorer(Gtk.Box):
         self.append(self._scroll)
 
         # Empty state label
+        self._registry: list[Tag] = []
+        self._colors: dict[str, str] = {}
+        self._all_meetings: list[Meeting] = []
+
         self._empty_label = Gtk.Label(label="No meetings found")
         self._empty_label.set_vexpand(True)
         self._empty_label.set_valign(Gtk.Align.CENTER)
@@ -106,22 +137,34 @@ class MeetingExplorer(Gtk.Box):
         """Rescan the output folder and rebuild the meeting list."""
         self._error_label.set_visible(False)
 
-        # Clear existing rows
+        cfg = settings.load()
+        output_folder = cfg.get("output_folder", "~/meetings")
+        self._registry = parse_tags(cfg.get("tags"))
+        self._colors = color_map(self._registry)
+        self._rebuild_filter()
+        self._all_meetings = scan_meetings(output_folder)
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        """Re-render rows for the active tag filter.
+
+        Deliberately touches neither disk nor the keyring: settings.load()
+        resolves the API key through the Secret Service, whose session handshake
+        takes seconds, and the filter changes far too often to pay that.
+        """
         remove_all_children(self._list_box)
         self._meeting_rows.clear()
 
-        cfg = settings.load()
-        output_folder = cfg.get("output_folder", "~/meetings")
-        meetings = scan_meetings(output_folder)
+        active = self._active_filter()
+        meetings = [m for m in self._all_meetings if matches_filter(m.tags, active)]
 
-        if not meetings:
-            self._empty_label.set_visible(True)
-            self._list_box.set_visible(False)
-        else:
-            self._empty_label.set_visible(False)
-            self._list_box.set_visible(True)
-            for meeting in meetings:
-                self._add_meeting_row(meeting)
+        self._empty_label.set_label(
+            "No meetings found" if active is None else "No meetings with this tag"
+        )
+        self._empty_label.set_visible(not meetings)
+        self._list_box.set_visible(bool(meetings))
+        for meeting in meetings:
+            self._add_meeting_row(meeting)
 
         self._update_delete_sensitivity()
 
@@ -161,11 +204,14 @@ class MeetingExplorer(Gtk.Box):
             else:
                 parts.append(f"{dur // 60}m")
         secondary_text = "  \u00b7  ".join(parts)
-        secondary_label = Gtk.Label(xalign=0)
-        secondary_label.set_markup(
-            f'<span size="small" foreground="gray">{GLib.markup_escape_text(secondary_text)}</span>'
-        )
+        secondary_label = Gtk.Label(label=secondary_text, xalign=0)
+        secondary_label.add_css_class("caption")
+        secondary_label.add_css_class("dim-label")
         title_box.append(secondary_label)
+
+        chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        chips.set_margin_top(2)
+        title_box.append(chips)
 
         row.append(title_box)
 
@@ -186,7 +232,9 @@ class MeetingExplorer(Gtk.Box):
             "secondary_label": secondary_label,
             "ai_box": ai_box,
             "ai_btn": ai_btn,
+            "chips": chips,
         }
+        self._render_chips(row_data)
 
         # Double-click the title to edit it inline (replaces the GTK3 EventBox
         # "button-press-event" path).
@@ -223,6 +271,15 @@ class MeetingExplorer(Gtk.Box):
             row.append(summarize_btn)
             row_data["summarize_btn"] = summarize_btn
 
+        # Tag button — opens the assignment popover for this meeting
+        tag_btn = Gtk.MenuButton(icon_name=tag_icon())
+        tag_btn.add_css_class("flat")
+        tag_btn.set_valign(Gtk.Align.CENTER)
+        tag_btn.set_tooltip_text("Tag this meeting")
+        tag_btn.connect("notify::active", self._on_tag_button_toggled, row_data)
+        row.append(tag_btn)
+        row_data["tag_btn"] = tag_btn
+
         # Rename button
         rename_btn = Gtk.Button(icon_name="document-edit-symbolic")
         rename_btn.add_css_class("flat")
@@ -255,6 +312,96 @@ class MeetingExplorer(Gtk.Box):
 
         self._meeting_rows.append(row_data)
         self._list_box.append(lb_row)
+
+    # -- Tags -----------------------------------------------------------
+
+    def _render_chips(self, row_data: dict) -> None:
+        """Draw the coloured chips for one meeting row."""
+        chips = row_data["chips"]
+        remove_all_children(chips)
+        meeting = row_data["meeting"]
+        for name in meeting.tags:
+            if name in self._colors:
+                chips.append(make_tag_chip(name, self._colors[name]))
+        chips.set_visible(bool(meeting.tags))
+
+    def _rebuild_filter(self) -> None:
+        """Repopulate the filter dropdown, preserving the active selection."""
+        previous = self._active_filter()
+        ids: list[str | None] = [None]
+        labels = ["All meetings"]
+        for tag in self._registry:
+            ids.append(tag.name)
+            labels.append(tag.name)
+        ids.append(UNTAGGED)
+        labels.append("Untagged")
+
+        self._suppress_filter_signal = True
+        try:
+            self._filter_ids = ids
+            self._filter_drop.set_model(Gtk.StringList.new(labels))
+            self._filter_drop.set_selected(ids.index(previous) if previous in ids else 0)
+        finally:
+            self._suppress_filter_signal = False
+
+    def _active_filter(self) -> str | None:
+        i = self._filter_drop.get_selected()
+        if 0 <= i < len(self._filter_ids):
+            return self._filter_ids[i]
+        return None
+
+    def _on_filter_changed(self, *_) -> None:
+        if not self._suppress_filter_signal:
+            self._apply_filter()
+
+    def _on_tag_button_toggled(self, button: Gtk.MenuButton, _param, row_data: dict) -> None:
+        if not button.get_active():
+            return
+        meeting = row_data["meeting"]
+        popover = TagAssignPopover(
+            self._registry,
+            list(meeting.tags),
+            lambda names, rd=row_data: self._on_tags_assigned(rd, names),
+            lambda name, rd=row_data: self._on_tag_created(rd, name),
+        )
+        button.set_popover(popover)
+        popover.popup()
+
+    def _on_tags_assigned(self, row_data: dict, names: list[str]) -> None:
+        meeting = row_data["meeting"]
+        try:
+            set_meeting_tags(meeting.path, names)
+        except OSError as exc:
+            self._error_label.set_text(f"Could not save tags: {exc}")
+            self._error_label.set_visible(True)
+            return
+        meeting.tags = list(names)
+        self._render_chips(row_data)
+        # A meeting can fall outside the active filter once its tags change.
+        if self._active_filter() is not None:
+            self._apply_filter()
+
+    def _on_tag_created(self, row_data: dict, name: str) -> None:
+        """Create a tag from the assignment popover and apply it immediately."""
+        registry = tags_add(self._registry, name)
+        settings.update_fields({"tags": serialize_tags(registry)})
+        self._registry = registry
+        self._colors = color_map(registry)
+        meeting = row_data["meeting"]
+        self._on_tags_assigned(row_data, [*meeting.tags, name])
+        self._rebuild_filter()
+
+    def _on_manage_tags(self, *_) -> None:
+        window = self.get_root()
+        dialog = TagManageDialog(window, self._registry, self._on_registry_saved)
+        dialog.present()
+
+    def _on_registry_saved(self, registry: list[Tag]) -> None:
+        settings.update_fields({"tags": serialize_tags(registry)})
+        self._registry = registry
+        self._colors = color_map(registry)
+        self._rebuild_filter()
+        self._apply_filter()
 
     def _update_delete_sensitivity(self) -> None:
         selected = any(rd["check"].get_active() for rd in self._meeting_rows)
