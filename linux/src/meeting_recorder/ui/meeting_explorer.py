@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
+from collections.abc import Callable
 from datetime import datetime
 
 import gi
@@ -21,8 +22,11 @@ from meeting_recorder.config.tags import (
     UNTAGGED,
     Tag,
     color_map,
+    known_tags_only,
     matches_filter,
     parse_tags,
+    remove_from_assignments,
+    rename_in_assignments,
     serialize_tags,
 )
 from meeting_recorder.config.tags import (
@@ -369,11 +373,11 @@ class MeetingExplorer(Gtk.Box):
 
     def _on_tags_assigned(self, row_data: dict, names: list[str]) -> None:
         meeting = row_data["meeting"]
+        names = known_tags_only(names, self._registry)
         try:
             set_meeting_tags(meeting.path, names)
         except OSError as exc:
-            self._error_label.set_text(f"Could not save tags: {exc}")
-            self._error_label.set_visible(True)
+            self._show_error(f"Could not save tags: {exc}")
             return
         meeting.tags = list(names)
         self._render_chips(row_data)
@@ -384,24 +388,67 @@ class MeetingExplorer(Gtk.Box):
     def _on_tag_created(self, row_data: dict, name: str) -> None:
         """Create a tag from the assignment popover and apply it immediately."""
         registry = tags_add(self._registry, name)
-        settings.update_fields({"tags": serialize_tags(registry)})
-        self._registry = registry
-        self._colors = color_map(registry)
+        if not self._save_registry(registry):
+            return
         meeting = row_data["meeting"]
         self._on_tags_assigned(row_data, [*meeting.tags, name])
         self._rebuild_filter()
 
     def _on_manage_tags(self, *_) -> None:
         window = self.get_root()
-        dialog = TagManageDialog(window, self._registry, self._on_registry_saved)
+        dialog = TagManageDialog(
+            window,
+            self._registry,
+            self._on_registry_saved,
+            on_rename=self._on_tag_renamed,
+            on_delete=self._on_tag_deleted,
+        )
         dialog.present()
 
     def _on_registry_saved(self, registry: list[Tag]) -> None:
-        settings.update_fields({"tags": serialize_tags(registry)})
-        self._registry = registry
-        self._colors = color_map(registry)
+        if not self._save_registry(registry):
+            return
         self._rebuild_filter()
         self._apply_filter()
+
+    def _save_registry(self, registry: list[Tag]) -> bool:
+        """Persist the tag registry. Returns False (and reports) on failure."""
+        try:
+            settings.update_fields({"tags": serialize_tags(registry)})
+        except OSError as exc:
+            self._show_error(f"Could not save tags: {exc}")
+            return False
+        self._registry = registry
+        self._colors = color_map(registry)
+        return True
+
+    def _on_tag_renamed(self, old: str, new: str) -> None:
+        self._sweep_assignments(lambda names: rename_in_assignments(names, old, new))
+
+    def _on_tag_deleted(self, name: str) -> None:
+        self._sweep_assignments(lambda names: remove_from_assignments(names, name))
+
+    def _sweep_assignments(self, update: Callable[[list[str]], list[str]]) -> None:
+        """Apply a registry change to every meeting that carries the tag.
+
+        Without this a renamed or deleted tag is orphaned: the old name stays in
+        meeting.json, matches nothing in the registry, and so stops rendering
+        while still being written back on every subsequent save.
+        """
+        for meeting in self._all_meetings:
+            updated = update(list(meeting.tags))
+            if updated == meeting.tags:
+                continue
+            try:
+                set_meeting_tags(meeting.path, updated)
+            except OSError as exc:
+                self._show_error(f"Could not update tags for {meeting.path.name}: {exc}")
+                continue
+            meeting.tags = updated
+
+    def _show_error(self, message: str) -> None:
+        self._error_label.set_text(message)
+        self._error_label.set_visible(True)
 
     def _update_delete_sensitivity(self) -> None:
         selected = any(rd["check"].get_active() for rd in self._meeting_rows)

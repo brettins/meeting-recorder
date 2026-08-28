@@ -116,11 +116,17 @@ class TagManageDialog(Adw.Window):
         parent: Gtk.Window,
         registry: list[Tag],
         on_save: Callable[[list[Tag]], None],
+        on_rename: Callable[[str, str], None] | None = None,
+        on_delete: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(title="Manage Tags", transient_for=parent, modal=True)
         self.set_default_size(420, 480)
         self._tags = list(registry)
         self._on_save = on_save
+        # Registry edits have to reach the meetings carrying the tag, or their
+        # assignments are orphaned in meeting.json.
+        self._on_rename = on_rename
+        self._on_delete = on_delete
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -210,13 +216,13 @@ class TagManageDialog(Adw.Window):
 
         entry = Gtk.Entry(text=tag.name, hexpand=True)
         entry.set_max_length(40)
-        entry.connect("activate", self._on_rename, tag.name)
+        entry.connect("activate", self._on_rename_activated, tag.name)
         row.append(entry)
 
         del_btn = Gtk.Button(icon_name="user-trash-symbolic")
         del_btn.add_css_class("flat")
         del_btn.set_tooltip_text("Delete tag")
-        del_btn.connect("clicked", self._on_delete, tag.name)
+        del_btn.connect("clicked", self._on_delete_clicked, tag.name)
         row.append(del_btn)
 
         lb_row = Gtk.ListBoxRow()
@@ -246,10 +252,17 @@ class TagManageDialog(Adw.Window):
         self._tags = recolor_tag(self._tags, name, color)
         self._commit()
 
-    def _on_rename(self, entry: Gtk.Entry, old: str) -> None:
-        self._tags = rename_tag(self._tags, old, entry.get_text())
+    def _on_rename_activated(self, entry: Gtk.Entry, old: str) -> None:
+        updated = rename_tag(self._tags, old, entry.get_text())
+        if updated == self._tags:
+            return  # blank name, or a collision with an existing tag
+        self._tags = updated
+        if self._on_rename is not None:
+            self._on_rename(old, normalize_name(entry.get_text()))
         self._commit()
 
-    def _on_delete(self, _btn: Gtk.Button, name: str) -> None:
+    def _on_delete_clicked(self, _btn: Gtk.Button, name: str) -> None:
         self._tags = remove_tag(self._tags, name)
+        if self._on_delete is not None:
+            self._on_delete(name)
         self._commit()

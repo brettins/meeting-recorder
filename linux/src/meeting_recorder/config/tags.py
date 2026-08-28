@@ -128,6 +128,25 @@ def known_tags_only(names: list[str], registry: list[Tag]) -> list[str]:
     return [n for n in names if n.casefold() in known]
 
 
+def rename_in_assignments(names: list[str], old: str, new: str) -> list[str]:
+    """Apply a registry rename to one meeting's assigned tag names.
+
+    Renaming a tag has to reach the meetings that carry it, or their assignment
+    is orphaned: the old name stays on disk, no longer matches any registry
+    entry, and stops rendering — while still being written back on every save.
+    """
+    clean = normalize_name(new)
+    if not clean:
+        return list(names)
+    renamed = [clean if n.casefold() == old.casefold() else n for n in names]
+    return parse_meeting_tags(renamed)
+
+
+def remove_from_assignments(names: list[str], removed: str) -> list[str]:
+    """Drop a deleted registry tag from one meeting's assigned tag names."""
+    return [n for n in names if n.casefold() != removed.casefold()]
+
+
 def matches_filter(meeting_tags: list[str], selected: str | None) -> bool:
     """True if a meeting should be shown under the active tag filter.
 

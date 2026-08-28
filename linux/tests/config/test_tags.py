@@ -15,7 +15,9 @@ from meeting_recorder.config.tags import (
     parse_meeting_tags,
     parse_tags,
     recolor_tag,
+    remove_from_assignments,
     remove_tag,
+    rename_in_assignments,
     rename_tag,
     serialize_tags,
 )
@@ -133,3 +135,35 @@ class TestMatchesFilter:
     def test_named_filter_matches_case_insensitively(self):
         assert matches_filter(["Story City"], "story city")
         assert not matches_filter(["Story City"], "SING!")
+
+
+class TestAssignmentRewrites:
+    """Registry renames and deletes have to reach the meetings carrying the tag."""
+
+    def test_rename_updates_a_matching_assignment(self):
+        assert rename_in_assignments(["Story City", "SING!"], "SING!", "SING") == [
+            "Story City",
+            "SING",
+        ]
+
+    def test_rename_matches_case_insensitively(self):
+        assert rename_in_assignments(["sing!"], "SING!", "SING") == ["SING"]
+
+    def test_rename_leaves_other_assignments_alone(self):
+        assert rename_in_assignments(["Story City"], "SING!", "SING") == ["Story City"]
+
+    def test_rename_to_blank_is_a_no_op(self):
+        assert rename_in_assignments(["SING!"], "SING!", "  ") == ["SING!"]
+
+    def test_rename_onto_an_existing_assignment_deduplicates(self):
+        # Renaming "b" to "a" on a meeting carrying both must not leave "a" twice.
+        assert rename_in_assignments(["a", "b"], "b", "a") == ["a"]
+
+    def test_remove_drops_the_deleted_tag(self):
+        assert remove_from_assignments(["Story City", "SING!"], "SING!") == ["Story City"]
+
+    def test_remove_matches_case_insensitively(self):
+        assert remove_from_assignments(["sing!"], "SING!") == []
+
+    def test_remove_of_an_absent_tag_is_a_no_op(self):
+        assert remove_from_assignments(["Story City"], "SING!") == ["Story City"]
