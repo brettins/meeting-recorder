@@ -6,6 +6,7 @@ main-thread scheduler are all injected fakes, so start/pause/stop/countdown/
 cancel flows run synchronously and deterministically.
 """
 
+import json
 import time
 from pathlib import Path
 
@@ -86,8 +87,8 @@ class Harness:
     def cfg(self):
         return {"output_folder": str(self.tmp_path), "recording_quality": "high"}
 
-    def start(self, mode="headphones", title=None):
-        self.controller.start(self.cfg(), mode, title)
+    def start(self, mode="headphones", title=None, tags=None):
+        self.controller.start(self.cfg(), mode, title, tags)
 
     def wait_recorder_stopped(self, timeout=2.0):
         deadline = time.monotonic() + timeout
@@ -242,3 +243,45 @@ class TestAbort:
         h.recorder.started = False
         h.start()
         assert h.recorder.started
+
+
+class TestTagsAtStart:
+    """Tags are written when the folder is created, not at the end of processing.
+
+    A recording whose transcription later fails must still keep the tags the
+    user chose before it started.
+    """
+
+    def test_tags_are_written_to_the_new_meeting_folder(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start(tags=["Story City", "SING!"])
+        meeting_dir = h.commits[0].audio_path.parent if h.commits else None
+        if meeting_dir is None:
+            meeting_dir = next(p for p in tmp_path.iterdir() if p.is_dir())
+        assert json.loads((meeting_dir / "meeting.json").read_text())["tags"] == [
+            "Story City",
+            "SING!",
+        ]
+
+    def test_no_metadata_is_written_without_tags(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        meeting_dir = next(p for p in tmp_path.iterdir() if p.is_dir())
+        assert not (meeting_dir / "meeting.json").exists()
+
+    def test_an_empty_tag_list_writes_nothing(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start(tags=[])
+        meeting_dir = next(p for p in tmp_path.iterdir() if p.is_dir())
+        assert not (meeting_dir / "meeting.json").exists()
+
+    def test_recording_still_starts_if_the_tag_write_fails(self, tmp_path, monkeypatch):
+        # A tag-write failure must never block the recording itself.
+        def boom(*_a, **_k):
+            raise OSError("read-only filesystem")
+
+        monkeypatch.setattr("meeting_recorder.core.recording_controller.set_meeting_tags", boom)
+        h = Harness(tmp_path=tmp_path)
+        h.start(tags=["Story City"])
+        assert h.recorder.started
+        assert h.errors == []

@@ -275,12 +275,15 @@ class MeetingExplorer(Gtk.Box):
             row.append(summarize_btn)
             row_data["summarize_btn"] = summarize_btn
 
-        # Tag button — opens the assignment popover for this meeting
+        # Tag button — opens the assignment popover for this meeting. The popover
+        # is attached up front: a Gtk.MenuButton with nothing to show renders as a
+        # dimmed, dead button, and rows are rebuilt whenever the registry or the
+        # filter changes, so an eagerly-built popover is never stale.
         tag_btn = Gtk.MenuButton(icon_name=tag_icon())
         tag_btn.add_css_class("flat")
         tag_btn.set_valign(Gtk.Align.CENTER)
         tag_btn.set_tooltip_text("Tag this meeting")
-        tag_btn.connect("notify::active", self._on_tag_button_toggled, row_data)
+        tag_btn.set_popover(self._build_tag_popover(row_data))
         row.append(tag_btn)
         row_data["tag_btn"] = tag_btn
 
@@ -358,18 +361,14 @@ class MeetingExplorer(Gtk.Box):
         if not self._suppress_filter_signal:
             self._apply_filter()
 
-    def _on_tag_button_toggled(self, button: Gtk.MenuButton, _param, row_data: dict) -> None:
-        if not button.get_active():
-            return
+    def _build_tag_popover(self, row_data: dict) -> TagAssignPopover:
         meeting = row_data["meeting"]
-        popover = TagAssignPopover(
+        return TagAssignPopover(
             self._registry,
             list(meeting.tags),
             lambda names, rd=row_data: self._on_tags_assigned(rd, names),
             lambda name, rd=row_data: self._on_tag_created(rd, name),
         )
-        button.set_popover(popover)
-        popover.popup()
 
     def _on_tags_assigned(self, row_data: dict, names: list[str]) -> None:
         meeting = row_data["meeting"]

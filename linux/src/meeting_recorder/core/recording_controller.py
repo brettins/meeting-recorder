@@ -25,6 +25,7 @@ from typing import Any
 
 from ..config.defaults import RECORDING_QUALITIES
 from ..utils.filename import output_paths
+from ..utils.meeting_scanner import set_meeting_tags
 from .state_machine import State, can_transition
 from .task_runner import TaskRunner
 
@@ -113,7 +114,13 @@ class RecordingController:
     def state(self) -> State:
         return self._state
 
-    def start(self, cfg: dict[str, Any], mode: str, title: str | None) -> None:
+    def start(
+        self,
+        cfg: dict[str, Any],
+        mode: str,
+        title: str | None,
+        tags: list[str] | None = None,
+    ) -> None:
         """Validate and start a recording. Emits on_error instead of raising."""
         if self._state != State.IDLE:
             return
@@ -124,6 +131,14 @@ class RecordingController:
             return
 
         audio, transcript, notes = output_paths(cfg.get("output_folder", "~/meetings"), title)
+        if tags:
+            # Write the tags as soon as the folder exists, not at the end of
+            # processing: a recording whose transcription fails should still
+            # keep the tags the user chose before it started.
+            try:
+                set_meeting_tags(audio.parent, tags)
+            except OSError as exc:
+                logger.warning("Could not write tags for %s: %s", audio.parent.name, exc)
         self._pending = PendingRecording(
             audio_path=audio,
             transcript_path=transcript,
