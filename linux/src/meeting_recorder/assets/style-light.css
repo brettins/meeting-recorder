@@ -1,0 +1,24 @@
+/*
+ * Light-theme overrides. Row background #FFFFFF.
+ *
+ * Chips have to be dark enough to clear 3:1 against white, which is the
+ * opposite constraint to the dark theme — hence a separate palette rather than
+ * one set of colours compromised for both. Same standards apply:
+ * 1.4.11 >= 3:1 for the fill, 1.4.3 >= 4.5:1 for the label.
+ */
+
+@define-color tag_blue_bg   #0072B2;
+@define-color tag_green_bg  #009E73;
+@define-color tag_yellow_bg #9C9427;
+@define-color tag_orange_bg #C18500;
+@define-color tag_red_bg    #D55E00;
+@define-color tag_purple_bg #CC79A7;
+@define-color tag_brown_bg  #8C6D31;
+
+@define-color tag_blue_fg   #FFFFFF;
+@define-color tag_green_fg  #000000;
+@define-color tag_yellow_fg #000000;
+@define-color tag_orange_fg #000000;
+@define-color tag_red_fg    #000000;
+@define-color tag_purple_fg #000000;
+@define-color tag_brown_fg  #FFFFFF;
