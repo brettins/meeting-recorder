@@ -24,9 +24,11 @@ class FakeController:
         self.state = State.IDLE
         self.calls = []
         self.started_with = None
+        self.started_tags = None
 
-    def start(self, cfg, mode, title):
+    def start(self, cfg, mode, title, tags=None):
         self.started_with = (mode, title)
+        self.started_tags = tags
         self.state = State.RECORDING
         self.cb["on_state"](State.RECORDING, "Recording…")
 
@@ -245,3 +247,32 @@ def test_start_recording_starts_with_key(engine, monkeypatch):
     engine.set_title("Weekly sync")
     engine.start_recording("speaker")
     assert engine._test["ctrl"]["ctrl"].started_with == ("speaker", "Weekly sync")
+
+
+def _allow_start(monkeypatch):
+    monkeypatch.setattr(
+        "meeting_recorder.daemon.engine.settings.load", lambda: {"output_folder": "~/m"}
+    )
+    monkeypatch.setattr("meeting_recorder.daemon.engine.settings.api_key_error", lambda cfg: None)
+
+
+def test_set_tags_are_passed_to_the_controller(engine, monkeypatch):
+    """Tags chosen on the Record tab must reach the recording that starts."""
+    _allow_start(monkeypatch)
+    engine.set_tags(["Story City", "SING!"])
+    engine.start_recording("headphones")
+    assert engine._test["ctrl"]["ctrl"].started_tags == ["Story City", "SING!"]
+
+
+def test_tags_default_to_none_when_unset(engine, monkeypatch):
+    _allow_start(monkeypatch)
+    engine.start_recording("headphones")
+    assert engine._test["ctrl"]["ctrl"].started_tags is None
+
+
+def test_empty_tag_list_is_normalised_to_none(engine, monkeypatch):
+    # An empty selection must not be stored as [] and re-sent on a tray start.
+    _allow_start(monkeypatch)
+    engine.set_tags([])
+    engine.start_recording("headphones")
+    assert engine._test["ctrl"]["ctrl"].started_tags is None

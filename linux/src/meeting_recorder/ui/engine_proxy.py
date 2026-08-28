@@ -147,6 +147,9 @@ class EngineProxy:
     def set_title(self, title: str) -> None:
         self._call("SetTitle", GLib.Variant("(s)", (title,)))
 
+    def set_tags(self, tags: list[str]) -> None:
+        self._call("SetTags", GLib.Variant("(as)", (tags,)))
+
     def pause(self) -> None:
         self._call("Pause")
 

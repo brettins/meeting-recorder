@@ -138,7 +138,7 @@ class Engine:
         if key_missing:
             self._emit_error(key_missing)
             return
-        self._controller.start(cfg, mode, self._pending_title)
+        self._controller.start(cfg, mode, self._pending_title, self._pending_tags)
 
     # The window sends the meeting title with the start command; keep the last
     # one so a tray-initiated start still records without a title.
@@ -146,6 +146,13 @@ class Engine:
 
     def set_title(self, title: str | None) -> None:
         self._pending_title = title or None
+
+    # Tags chosen on the Record tab before the recording starts, kept alongside
+    # the title so a tray-initiated start still applies the last selection.
+    _pending_tags: list[str] | None = None
+
+    def set_tags(self, tags: list[str] | None) -> None:
+        self._pending_tags = list(tags) if tags else None
 
     def pause(self) -> None:
         self._controller.pause()

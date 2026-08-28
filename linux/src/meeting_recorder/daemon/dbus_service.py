@@ -36,6 +36,7 @@ _ENGINE_XML = f"""
   <interface name="{ENGINE_IFACE}">
     <method name="StartRecording"><arg name="mode" type="s" direction="in"/></method>
     <method name="SetTitle"><arg name="title" type="s" direction="in"/></method>
+    <method name="SetTags"><arg name="tags" type="as" direction="in"/></method>
     <method name="Pause"/>
     <method name="Resume"/>
     <method name="Stop"/>
@@ -229,6 +230,10 @@ class EngineService:
         elif method == "SetTitle":
             (title,) = params.unpack()
             eng.set_title(title)
+            invocation.return_value(None)
+        elif method == "SetTags":
+            (tags,) = params.unpack()
+            eng.set_tags(list(tags))
             invocation.return_value(None)
         elif method == "Pause":
             eng.pause()

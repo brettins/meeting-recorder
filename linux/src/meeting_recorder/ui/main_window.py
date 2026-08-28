@@ -24,6 +24,13 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from meeting_recorder.config import settings
+from meeting_recorder.config.tags import (
+    add_tag,
+    color_map,
+    known_tags_only,
+    parse_tags,
+    serialize_tags,
+)
 from meeting_recorder.utils.filename import output_paths
 from meeting_recorder.utils.meeting_scanner import Meeting, find_audio_file
 
@@ -32,8 +39,10 @@ from ..core.window_close import CLOSE_HIDE, resolve_close_action
 from ..core.wire import Snapshot, snapshot_from_json
 from ..utils.gtk_compat import remove_all_children
 from ..utils.recording_import import resolve_existing_recording_target
+from .icons import tag_icon
 from .jobs_panel import JobsPanel
 from .meeting_explorer import MeetingExplorer
+from .tag_widgets import TagAssignPopover, make_tag_chip
 
 logger = logging.getLogger(__name__)
 
@@ -125,9 +134,27 @@ class MainWindow(Adw.ApplicationWindow):
 
         title_group = Adw.PreferencesGroup()
         self._title_row = Adw.EntryRow(title="Title (optional)")
+
+        # Tag the meeting before it starts, so a recording arrives already
+        # filed rather than needing a trip to the library afterwards.
+        self._pending_tags: list[str] = []
+        self._tag_button = Gtk.MenuButton(icon_name=tag_icon())
+        self._tag_button.add_css_class("flat")
+        self._tag_button.set_valign(Gtk.Align.CENTER)
+        self._tag_button.set_tooltip_text("Tag this recording")
+        self._title_row.add_suffix(self._tag_button)
+        self._rebuild_tag_popover()
+
         title_group.add(self._title_row)
         self._title_entry = self._title_row
+
+        self._tag_chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self._tag_chips.set_halign(Gtk.Align.CENTER)
+        self._tag_chips.set_margin_top(6)
+        self._tag_chips.set_visible(False)
+
         vbox.append(title_group)
+        vbox.append(self._tag_chips)
 
         self._button_box = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=False
@@ -305,7 +332,57 @@ class MainWindow(Adw.ApplicationWindow):
     def _start_recording(self) -> None:
         title = self._title_entry.get_text().strip()
         self._engine.set_title(title)
+        self._engine.set_tags(self._pending_tags)
         self._engine.start_recording(self._recording_mode)
+        self.clear_pending_tags()
+
+    # -- Record-tab tagging ---------------------------------------------
+
+    def _rebuild_tag_popover(self) -> None:
+        """Rebuild the popover so it reflects the current registry and selection.
+
+        A Gtk.MenuButton with no popover renders dimmed and does nothing, so one
+        is always attached rather than created on first click.
+        """
+        registry = parse_tags(settings.load().get("tags"))
+        self._tag_registry = registry
+        self._tag_button.set_popover(
+            TagAssignPopover(
+                registry,
+                list(self._pending_tags),
+                self._on_pending_tags_changed,
+                self._on_pending_tag_created,
+            )
+        )
+
+    def _render_pending_chips(self) -> None:
+        remove_all_children(self._tag_chips)
+        colors = color_map(self._tag_registry)
+        for name in self._pending_tags:
+            if name in colors:
+                self._tag_chips.append(make_tag_chip(name, colors[name]))
+        self._tag_chips.set_visible(bool(self._pending_tags))
+
+    def _on_pending_tags_changed(self, names: list[str]) -> None:
+        self._pending_tags = known_tags_only(names, self._tag_registry)
+        self._render_pending_chips()
+
+    def _on_pending_tag_created(self, name: str) -> None:
+        registry = add_tag(self._tag_registry, name)
+        try:
+            settings.update_fields({"tags": serialize_tags(registry)})
+        except OSError as exc:
+            logger.warning("Could not save the new tag: %s", exc)
+            return
+        self._pending_tags = [*self._pending_tags, name]
+        self._rebuild_tag_popover()
+        self._render_pending_chips()
+
+    def clear_pending_tags(self) -> None:
+        """Drop the tag selection once a recording has been started."""
+        self._pending_tags = []
+        self._rebuild_tag_popover()
+        self._render_pending_chips()
 
     def on_pause_clicked(self) -> None:
         self._engine.pause()
