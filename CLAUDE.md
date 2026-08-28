@@ -4,6 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git workflow — IMPORTANT
 
+> **Fork-local override (brettins fork).** This is a personal hobby fork, not the
+> upstream project. In this repo the agent may merge its own pull requests without
+> asking — points 4 and 5 below do not apply here. Still branch and open a PR for
+> each change so the history stays reviewable, then merge it. Everything else in
+> this file (docs in the same PR, meaningful tests, never break user space) still
+> holds. This paragraph is fork-local: drop it from any branch sent upstream, where
+> the original rule applies.
+
+
 **Never push directly to `main`.** Always work on a feature branch and open a pull request so the GitHub Actions CI pipeline can run tests before merging.
 
 1. Create a branch from the latest `main`:
