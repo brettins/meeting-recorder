@@ -26,6 +26,7 @@ from gi.repository import Adw, Gdk, Gio, Gtk
 
 from ..config.defaults import APP_ID
 from ..utils.logging_setup import setup_logging
+from .style import load_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class WindowApp(Adw.Application):
         Adw.Application.do_startup(self)
         setup_logging(role="window")
         self._setup_app_icon()
+        load_stylesheet()
 
     def do_activate(self) -> None:
         if self.window is None:
