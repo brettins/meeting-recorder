@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 # Secret Service keyring. Deliberately not a plausible key value.
 KEYRING_SENTINEL = "@keyring"
 
+# Shortest plausible Google API key. Deliberately loose: Google has shipped
+# several key formats and a prefix check produced false warnings on valid keys.
+MIN_GEMINI_KEY_LENGTH = 20
+
 _keyring_store: KeyringStore | None = None
 
 
@@ -179,9 +183,11 @@ def api_key_error(config: dict[str, Any]) -> str | None:
 def gemini_key_warning(config: dict[str, Any]) -> str | None:
     """Return a human-readable warning if the configured Gemini key looks wrong.
 
-    Pure (unit-testable). Only a *format* check — no network call. Google API
-    keys start with "AIza"; a mismatch almost always means a paste error, and
-    catching it at save time beats a failed job at the end of a meeting.
+    Pure (unit-testable). Only a *format* check — no network call. Google issues
+    keys in more than one format, so this deliberately checks only for the two
+    things that are always a mistake: an implausibly short value, and embedded
+    whitespace from a broken paste. Prefix matching is not used — it produced
+    false warnings on perfectly valid keys.
     """
     uses_gemini = "gemini" in (
         config.get("transcription_service", "gemini"),
@@ -192,9 +198,14 @@ def gemini_key_warning(config: dict[str, Any]) -> str | None:
     key = (config.get("gemini_api_key") or "").strip()
     if not key:
         return "Gemini is selected as a service but no API key is set."
-    if not key.startswith("AIza") or len(key) < 35:
+    if any(c.isspace() for c in key):
         return (
-            "The Gemini API key does not look like a Google API key "
-            '(expected to start with "AIza"). Double-check it in Settings.'
+            "The Gemini API key contains a space or line break, which usually means "
+            "the paste picked up surrounding text. Double-check it in Settings."
+        )
+    if len(key) < MIN_GEMINI_KEY_LENGTH:
+        return (
+            f"The Gemini API key looks too short ({len(key)} characters). "
+            "Double-check it in Settings."
         )
     return None
