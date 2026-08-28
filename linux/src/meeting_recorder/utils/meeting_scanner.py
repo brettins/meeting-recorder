@@ -6,11 +6,12 @@ import json
 import logging
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ..config.tags import parse_meeting_tags
 from .filename import sanitize_title
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class Meeting:
     has_transcript: bool
     has_audio: bool
     duration_seconds: int | None  # audio duration in seconds, None if unknown
+    tags: list[str] = field(default_factory=list)  # tag names from meeting.json
 
 
 def find_audio_file(meeting_path: Path) -> Path | None:
@@ -90,6 +92,7 @@ def scan_meetings(output_folder: str) -> list[Meeting]:
                 has_transcript=(meeting_dir / "transcript.md").exists(),
                 has_audio=bool(audio_files),
                 duration_seconds=int(duration) if duration is not None else None,
+                tags=parse_meeting_tags(meta.get("tags")),
             )
         )
 
@@ -200,3 +203,8 @@ def rename_meeting_path(meeting_dir: Path, new_title: str) -> Path:
 def rename_meeting_dir(meeting: Meeting, new_title: str) -> Path:
     """Rename meeting folder to {HH-MM}_{sanitized_title}. Returns new path."""
     return rename_meeting_path(meeting.path, new_title)
+
+
+def set_meeting_tags(meeting_path: Path, tags: list[str]) -> None:
+    """Persist the tag names assigned to a meeting."""
+    write_metadata(meeting_path, {"tags": parse_meeting_tags(tags)})

@@ -102,6 +102,25 @@ def save(config: dict[str, Any], keyring: KeyringStore | None = None) -> None:
     _write(to_write)
 
 
+def update_fields(changes: dict[str, Any]) -> None:
+    """Merge non-secret *changes* into config.json, leaving the API key alone.
+
+    save() round-trips the Gemini key through the Secret Service, and opening a
+    keyring session costs a slow Diffie-Hellman handshake. Settings unrelated to
+    the key go through here instead: the stored ``gemini_api_key`` value (real
+    key or ``@keyring`` sentinel) is left exactly as found on disk, so callers
+    can persist things like tags without paying for — or risking — the keyring.
+    """
+    try:
+        stored = json.loads(_config_path().read_text())
+        if not isinstance(stored, dict):
+            stored = {}
+    except Exception:
+        stored = {}
+    stored.update({k: v for k, v in changes.items() if k != "gemini_api_key"})
+    _write(stored)
+
+
 def _stored_key_is_sentinel() -> bool:
     """True if config.json on disk currently stores the keyring sentinel."""
     try:
