@@ -69,8 +69,9 @@ class Harness:
         self.countdowns: list[int] = []
         self.tmp_path = tmp_path
 
+        self.runner = TaskRunner(schedule_on_main=lambda cb: cb())
         self.controller = RecordingController(
-            TaskRunner(schedule_on_main=lambda cb: cb()),
+            self.runner,
             on_state=lambda s, m: self.states.append((s, m)),
             on_error=self.errors.append,
             on_commit=self.commits.append,
@@ -95,6 +96,14 @@ class Harness:
         while not self.recorder.stopped and time.monotonic() < deadline:
             time.sleep(0.01)
         assert self.recorder.stopped
+
+    def drain(self, timeout=2.0):
+        """Join the worker threads so their on_done callbacks have all run.
+
+        recorder.stop() is no longer the last thing a stop worker does — the
+        queued rename follows it — so waiting on the recorder alone races.
+        """
+        assert self.runner.shutdown(grace_seconds=timeout) == []
 
 
 class TestMakeJobLabel:
@@ -285,3 +294,131 @@ class TestTagsAtStart:
         h.start(tags=["Story City"])
         assert h.recorder.started
         assert h.errors == []
+
+
+class TestLiveTitleAndTags:
+    """Title and tags can be edited while the recording runs.
+
+    Tags and the title land in meeting.json straight away — the folder is
+    already there — but the *folder rename* has to wait until ffmpeg has exited,
+    so it is queued and applied by the stop worker.
+    """
+
+    def _meeting_dir(self, tmp_path):
+        return next(p for p in tmp_path.iterdir() if p.is_dir())
+
+    def _meta(self, tmp_path):
+        return json.loads((self._meeting_dir(tmp_path) / "meeting.json").read_text())
+
+    def test_title_set_mid_recording_is_written_to_metadata_at_once(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller.set_title("Weekly Sync")
+        assert self._meta(tmp_path)["title"] == "Weekly Sync"
+
+    def test_the_folder_is_not_renamed_while_the_recorder_still_owns_it(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        original = self._meeting_dir(tmp_path).name
+
+        h.controller.set_title("Weekly Sync")
+
+        assert self._meeting_dir(tmp_path).name == original
+
+    def test_stopping_applies_the_queued_rename_and_hands_back_the_new_paths(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller.set_title("Weekly Sync")
+        h.controller.stop(countdown_enabled=False)
+        h.wait_recorder_stopped()
+        h.controller.wait_until_stopped()
+
+        final = h.controller.take_final_paths()
+        assert final is not None
+        assert final.audio_path.parent.name.endswith("_Weekly_Sync")
+        assert final.transcript_path.parent == final.audio_path.parent
+        assert self._meeting_dir(tmp_path) == final.audio_path.parent
+
+    def test_final_paths_are_handed_out_only_once(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller.set_title("Weekly Sync")
+        h.controller.stop(countdown_enabled=False)
+        h.controller.wait_until_stopped()
+
+        assert h.controller.take_final_paths() is not None
+        assert h.controller.take_final_paths() is None
+
+    def test_a_recording_started_with_a_title_is_not_renamed_again(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start(title="Standup")
+        original = self._meeting_dir(tmp_path)
+        h.controller.stop(countdown_enabled=False)
+        h.controller.wait_until_stopped()
+
+        final = h.controller.take_final_paths()
+        assert final is not None
+        assert final.audio_path.parent == original
+
+    def test_cancel_and_save_also_applies_the_rename(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller.set_title("Weekly Sync")
+        h.controller.cancel_and_save()
+        h.drain()
+
+        assert h.saved
+        assert h.saved[0].audio_path.parent.name.endswith("_Weekly_Sync")
+
+    def test_tags_set_mid_recording_are_written_at_once(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller.set_tags(["Story City"])
+        assert self._meta(tmp_path)["tags"] == ["Story City"]
+
+    def test_tags_can_be_cleared_mid_recording(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start(tags=["Story City"])
+        h.controller.set_tags([])
+        assert self._meta(tmp_path)["tags"] == []
+
+    def test_the_job_label_follows_the_new_title(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller.set_title("Weekly Sync")
+        h.controller.stop(countdown_enabled=False)
+        assert h.commits[0].label.endswith("Weekly Sync")
+
+    def test_edits_are_ignored_when_no_recording_is_running(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.controller.set_title("Weekly Sync")
+        h.controller.set_tags(["Story City"])
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_failed_metadata_write_does_not_break_the_recording(self, tmp_path, monkeypatch):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+
+        def boom(*_a, **_k):
+            raise OSError("read-only filesystem")
+
+        monkeypatch.setattr("meeting_recorder.core.recording_controller.write_metadata", boom)
+        monkeypatch.setattr("meeting_recorder.core.recording_controller.set_meeting_tags", boom)
+        h.controller.set_title("Weekly Sync")
+        h.controller.set_tags(["Story City"])
+
+        assert h.errors == []
+        assert h.controller.state is State.RECORDING
+
+    def test_discarding_removes_the_metadata_only_folder(self, tmp_path):
+        # Tags/title write a meeting.json; discarding must not leave the library
+        # littered with an empty folder that only holds it.
+        h = Harness(tmp_path=tmp_path)
+        h.start(tags=["Story City"])
+        meeting_dir = self._meeting_dir(tmp_path)
+        meeting_dir.joinpath("recording.mp3").write_bytes(b"audio")
+
+        h.controller.cancel_and_discard()
+        h.drain()
+
+        assert not meeting_dir.exists()
