@@ -1,4 +1,11 @@
-"""Meeting Explorer — browse, manage, and AI-title recorded meetings."""
+"""Meeting Explorer — browse, manage, and AI-title recorded meetings.
+
+Rows come from ``ui/meeting_row.py``, the same widget the Record tab uses, so a
+meeting being recorded, one being transcribed, one that failed and one that is
+finished are four states of one list rather than four list designs. The daemon's
+job snapshot is pushed in through ``set_jobs``; the folder scan and the job state
+are joined by ``core/row_model.py``.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +20,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
-gi.require_version("Pango", "1.0")
-from gi.repository import Adw, Gdk, GLib, Gtk, Pango
+from gi.repository import Adw, Gdk, GLib, Gtk
 
 from meeting_recorder.config import settings
 from meeting_recorder.config.defaults import TITLE_PROMPT
@@ -41,10 +47,11 @@ from meeting_recorder.utils.meeting_scanner import (
     write_metadata,
 )
 
+from ..core import row_model as rm
 from ..utils.glib_bridge import idle_call
-from ..utils.gtk_compat import remove_all_children
-from .icons import tag_icon, tag_list_icon
-from .tag_widgets import TagAssignPopover, TagManageDialog, make_tag_chip
+from .icons import tag_list_icon
+from .meeting_row import MeetingRow, RowListView
+from .tag_widgets import TagAssignPopover, TagManageDialog
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +59,12 @@ logger = logging.getLogger(__name__)
 class MeetingExplorer(Gtk.Box):
     """Scrollable meeting list with AI title generation and multi-select delete."""
 
-    def __init__(self, on_summarize=None) -> None:
+    def __init__(self, on_summarize=None, on_job_action=None) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
         self._on_summarize_callback = on_summarize
-        self._meeting_rows: list[dict] = []  # [{meeting, check, row, ...}, ...]
+        # (action, job_id, error_msg) -> the window forwards it to the daemon.
+        self._on_job_action = on_job_action
 
         # Toolbar
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -99,6 +107,9 @@ class MeetingExplorer(Gtk.Box):
 
         # Error label (for delete failures etc.)
         self._error_label = Gtk.Label(xalign=0)
+        # libadwaita's semantic class, so the colour comes from the theme rather
+        # than a literal in this file.
+        self._error_label.add_css_class("error")
         self._error_label.set_wrap(True)
         self._error_label.set_margin_start(16)
         self._error_label.set_margin_end(16)
@@ -125,10 +136,22 @@ class MeetingExplorer(Gtk.Box):
         self._scroll.set_child(list_clamp)
         self.append(self._scroll)
 
-        # Empty state label
         self._registry: list[Tag] = []
         self._colors: dict[str, str] = {}
         self._all_meetings: list[Meeting] = []
+        self._by_key: dict[str, Meeting] = {}
+        self._jobs: list = []
+        self._recording_dir = ""
+        self._job_signature: tuple = ()
+
+        self._list = RowListView(
+            self._list_box,
+            on_action=self._on_row_action,
+            show_check=True,
+            on_check_toggled=self._update_delete_sensitivity,
+            tag_popover_factory=self._build_tag_popover,
+            on_row_created=self._attach_row_gestures,
+        )
 
         self._empty_label = Gtk.Label(label="No meetings found")
         self._empty_label.set_vexpand(True)
@@ -136,6 +159,8 @@ class MeetingExplorer(Gtk.Box):
         self._empty_label.set_opacity(0.5)
         self._empty_label.set_visible(False)
         self.append(self._empty_label)
+
+    # -- Data ------------------------------------------------------------
 
     def refresh(self) -> None:
         """Rescan the output folder and rebuild the meeting list."""
@@ -147,7 +172,25 @@ class MeetingExplorer(Gtk.Box):
         self._colors = color_map(self._registry)
         self._rebuild_filter()
         self._all_meetings = scan_meetings(output_folder)
+        self._by_key = {str(m.path): m for m in self._all_meetings}
         self._apply_filter()
+
+    def set_jobs(self, jobs: list, recording_dir: str = "") -> None:
+        """Push the daemon's job snapshot in so rows can show their live state.
+
+        A job finishing changes what is on disk (a transcript appears, a folder
+        may have been auto-titled), so the folder is rescanned when the job set
+        changes — but not on the once-a-second timer ticks in between.
+        """
+        self._jobs = list(jobs)
+        signature = tuple(sorted((j.job_id, j.status.value, j.audio_dir) for j in jobs))
+        rescan = signature != self._job_signature or recording_dir != self._recording_dir
+        self._job_signature = signature
+        self._recording_dir = recording_dir
+        if rescan and self.get_mapped():
+            self.refresh()
+        else:
+            self._apply_filter()
 
     def _apply_filter(self) -> None:
         """Re-render rows for the active tag filter.
@@ -156,181 +199,92 @@ class MeetingExplorer(Gtk.Box):
         resolves the API key through the Secret Service, whose session handshake
         takes seconds, and the filter changes far too often to pay that.
         """
-        remove_all_children(self._list_box)
-        self._meeting_rows.clear()
-
         active = self._active_filter()
         meetings = [m for m in self._all_meetings if matches_filter(m.tags, active)]
+        jobs_by_dir = rm.index_jobs_by_dir(self._jobs)
+
+        models = [
+            rm.row_from_meeting(
+                m,
+                jobs_by_dir.get(str(m.path)),
+                is_recording=str(m.path) == self._recording_dir,
+            )
+            for m in meetings
+        ]
+        self._list.render(models, self._colors)
 
         self._empty_label.set_label(
             "No meetings found" if active is None else "No meetings with this tag"
         )
-        self._empty_label.set_visible(not meetings)
-        self._list_box.set_visible(bool(meetings))
-        for meeting in meetings:
-            self._add_meeting_row(meeting)
-
+        self._empty_label.set_visible(not models)
         self._update_delete_sensitivity()
 
-    def _add_meeting_row(self, meeting: Meeting) -> None:
-        """Add a single meeting row to the list."""
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        row.set_margin_top(8)
-        row.set_margin_bottom(8)
-        row.set_margin_start(12)
-        row.set_margin_end(12)
+    # -- Row plumbing ----------------------------------------------------
 
-        # Checkbox
-        check = Gtk.CheckButton()
-        check.connect("toggled", lambda *_: self._update_delete_sensitivity())
-        row.append(check)
-
-        # Title area
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        title_box.set_hexpand(True)
-
-        primary = meeting.title or meeting.time_label
-        primary_label = Gtk.Label(label=primary, xalign=0)
-        primary_label.set_ellipsize(Pango.EllipsizeMode.END)
-
-        # GTK4 removed Gtk.EventBox; attach a click gesture directly to the
-        # label for double-click editing (see _add_meeting_row's gesture below).
-        title_box.append(primary_label)
-
-        # Secondary line: date, time, duration
-        date_str = meeting.date.strftime("%b %d, %Y")
-        time_str = meeting.date.strftime("%I:%M %p").lstrip("0")
-        parts = [date_str, time_str]
-        if meeting.duration_seconds is not None:
-            dur = meeting.duration_seconds
-            if dur >= 3600:
-                parts.append(f"{dur // 3600}h {(dur % 3600) // 60}m")
-            else:
-                parts.append(f"{dur // 60}m")
-        secondary_text = "  \u00b7  ".join(parts)
-        secondary_label = Gtk.Label(label=secondary_text, xalign=0)
-        secondary_label.add_css_class("caption")
-        secondary_label.add_css_class("dim-label")
-        title_box.append(secondary_label)
-
-        chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        chips.set_margin_top(2)
-        title_box.append(chips)
-
-        row.append(title_box)
-
-        # AI Title button / status area
-        ai_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        ai_box.set_valign(Gtk.Align.CENTER)
-        ai_btn = Gtk.Button(icon_name="starred-symbolic")
-        ai_btn.add_css_class("flat")
-        ai_btn.set_tooltip_text("Generate a title from meeting notes")
-
-        # Build row_data dict before connecting signals that reference it
-        row_data = {
-            "meeting": meeting,
-            "check": check,
-            "row": row,
-            "primary_label": primary_label,
-            "title_box": title_box,
-            "secondary_label": secondary_label,
-            "ai_box": ai_box,
-            "ai_btn": ai_btn,
-            "chips": chips,
-        }
-        self._render_chips(row_data)
-
-        # Double-click the title to edit it inline (replaces the GTK3 EventBox
-        # "button-press-event" path).
-        title_gesture = Gtk.GestureClick()
-        title_gesture.connect(
+    def _attach_row_gestures(self, row: MeetingRow) -> None:
+        """Double-click the title to edit it inline (GTK4 has no EventBox)."""
+        gesture = Gtk.GestureClick()
+        gesture.connect(
             "pressed",
-            lambda gesture, n_press, x, y, rd=row_data: self._on_title_double_click(n_press, rd),
+            lambda _g, n_press, _x, _y, r=row: self._start_inline_edit(r) if n_press == 2 else None,
         )
-        primary_label.add_controller(title_gesture)
+        row.primary_label.add_controller(gesture)
 
-        ai_btn.connect("clicked", lambda *_, rd=row_data: self._on_ai_title_clicked(rd))
+    def _meeting_for(self, model: rm.RowModel) -> Meeting | None:
+        return self._by_key.get(model.key)
 
-        # Show AI button only if notes exist and no title yet
-        if meeting.has_notes and meeting.title is None:
-            ai_box.append(ai_btn)
+    def _on_row_action(self, action: str, model: rm.RowModel) -> None:
+        if action in (rm.CANCEL, rm.RETRY, rm.DISMISS):
+            if self._on_job_action and model.job_id is not None:
+                self._on_job_action(action, model.job_id)
+            return
+        if action == rm.DETAILS:
+            self._show_details(model)
+            return
 
-        row.append(ai_box)
+        meeting = self._meeting_for(model)
+        if meeting is None:
+            return
+        row = self._list.row(model.key)
+        if action == rm.OPEN_FOLDER:
+            self._open_folder(meeting)
+        elif action == rm.DELETE:
+            self._confirm_and_delete([meeting])
+        elif action == rm.RENAME and row is not None:
+            self._start_inline_edit(row)
+        elif action == rm.AI_TITLE and row is not None:
+            self._on_ai_title_clicked(row, meeting)
+        elif action == rm.SUMMARIZE:
+            if row is not None:
+                row.set_action_sensitive(rm.SUMMARIZE, False)
+            if self._on_summarize_callback:
+                self._on_summarize_callback(meeting)
 
-        # Summarize button — shown when audio exists but no transcript/notes
-        if (
-            self._on_summarize_callback
-            and meeting.has_audio
-            and not meeting.has_transcript
-            and not meeting.has_notes
-        ):
-            summarize_btn = Gtk.Button(icon_name="system-run-symbolic")
-            summarize_btn.add_css_class("flat")
-            summarize_btn.set_valign(Gtk.Align.CENTER)
-            summarize_btn.set_tooltip_text("Transcribe and summarize this recording")
-            summarize_btn.connect(
-                "clicked",
-                lambda *_, rd=row_data: self._on_summarize_clicked(rd),
-            )
-            row.append(summarize_btn)
-            row_data["summarize_btn"] = summarize_btn
+    def _show_details(self, model: rm.RowModel) -> None:
+        """Show the entire error message, with a way to copy it."""
+        message = model.error_msg or "No error message was recorded for this job."
+        alert = Gtk.AlertDialog()
+        alert.set_modal(True)
+        alert.set_message(f"{model.title} failed")
+        alert.set_detail(message)
+        alert.set_buttons(["Copy", "Close"])
+        alert.set_default_button(1)
+        alert.set_cancel_button(1)
 
-        # Tag button — opens the assignment popover for this meeting. The popover
-        # is attached up front: a Gtk.MenuButton with nothing to show renders as a
-        # dimmed, dead button, and rows are rebuilt whenever the registry or the
-        # filter changes, so an eagerly-built popover is never stale.
-        tag_btn = Gtk.MenuButton(icon_name=tag_icon())
-        tag_btn.add_css_class("flat")
-        tag_btn.set_valign(Gtk.Align.CENTER)
-        tag_btn.set_tooltip_text("Tag this meeting")
-        tag_btn.set_popover(self._build_tag_popover(row_data))
-        row.append(tag_btn)
-        row_data["tag_btn"] = tag_btn
+        def on_choice(dialog, result):
+            try:
+                choice = dialog.choose_finish(result)
+            except GLib.Error:
+                return  # dismissed
+            if choice == 0:
+                display = Gdk.Display.get_default()
+                if display is not None:
+                    display.get_clipboard().set(message)
 
-        # Rename button
-        rename_btn = Gtk.Button(icon_name="document-edit-symbolic")
-        rename_btn.add_css_class("flat")
-        rename_btn.set_valign(Gtk.Align.CENTER)
-        rename_btn.set_tooltip_text("Rename meeting")
-        rename_btn.connect("clicked", lambda *_, rd=row_data: self._on_rename_clicked(rd))
-        row.append(rename_btn)
-
-        # Open folder button
-        folder_btn = Gtk.Button(icon_name="folder-open-symbolic")
-        folder_btn.add_css_class("flat")
-        folder_btn.set_valign(Gtk.Align.CENTER)
-        folder_btn.set_tooltip_text("Open folder")
-        folder_btn.connect("clicked", lambda *_, rd=row_data: self._open_folder(rd))
-        row.append(folder_btn)
-
-        # Per-row delete button
-        del_btn = Gtk.Button(icon_name="user-trash-symbolic")
-        del_btn.add_css_class("flat")
-        del_btn.set_valign(Gtk.Align.CENTER)
-        del_btn.set_tooltip_text("Delete this meeting")
-        del_btn.connect("clicked", lambda *_, rd=row_data: self._on_delete_single(rd))
-        row.append(del_btn)
-
-        # Wrap the row in a non-activatable ListBoxRow for the boxed-list look.
-        lb_row = Gtk.ListBoxRow()
-        lb_row.set_activatable(False)
-        lb_row.set_child(row)
-        row_data["row"] = lb_row
-
-        self._meeting_rows.append(row_data)
-        self._list_box.append(lb_row)
+        root = self.get_root()
+        alert.choose(root if isinstance(root, Gtk.Window) else None, None, on_choice)
 
     # -- Tags -----------------------------------------------------------
-
-    def _render_chips(self, row_data: dict) -> None:
-        """Draw the coloured chips for one meeting row."""
-        chips = row_data["chips"]
-        remove_all_children(chips)
-        meeting = row_data["meeting"]
-        for name in meeting.tags:
-            if name in self._colors:
-                chips.append(make_tag_chip(name, self._colors[name]))
-        chips.set_visible(bool(meeting.tags))
 
     def _rebuild_filter(self) -> None:
         """Repopulate the filter dropdown, preserving the active selection."""
@@ -361,17 +315,18 @@ class MeetingExplorer(Gtk.Box):
         if not self._suppress_filter_signal:
             self._apply_filter()
 
-    def _build_tag_popover(self, row_data: dict) -> TagAssignPopover:
-        meeting = row_data["meeting"]
+    def _build_tag_popover(self, model: rm.RowModel) -> TagAssignPopover:
         return TagAssignPopover(
             self._registry,
-            list(meeting.tags),
-            lambda names, rd=row_data: self._on_tags_assigned(rd, names),
-            lambda name, rd=row_data: self._on_tag_created(rd, name),
+            list(model.tags),
+            lambda names, key=model.key: self._on_tags_assigned(key, names),
+            lambda name, key=model.key: self._on_tag_created(key, name),
         )
 
-    def _on_tags_assigned(self, row_data: dict, names: list[str]) -> None:
-        meeting = row_data["meeting"]
+    def _on_tags_assigned(self, key: str, names: list[str]) -> None:
+        meeting = self._by_key.get(key)
+        if meeting is None:
+            return
         names = known_tags_only(names, self._registry)
         try:
             set_meeting_tags(meeting.path, names)
@@ -379,18 +334,16 @@ class MeetingExplorer(Gtk.Box):
             self._show_error(f"Could not save tags: {exc}")
             return
         meeting.tags = list(names)
-        self._render_chips(row_data)
-        # A meeting can fall outside the active filter once its tags change.
-        if self._active_filter() is not None:
-            self._apply_filter()
+        self._apply_filter()
 
-    def _on_tag_created(self, row_data: dict, name: str) -> None:
+    def _on_tag_created(self, key: str, name: str) -> None:
         """Create a tag from the assignment popover and apply it immediately."""
         registry = tags_add(self._registry, name)
         if not self._save_registry(registry):
             return
-        meeting = row_data["meeting"]
-        self._on_tags_assigned(row_data, [*meeting.tags, name])
+        meeting = self._by_key.get(key)
+        if meeting is not None:
+            self._on_tags_assigned(key, [*meeting.tags, name])
         self._rebuild_filter()
 
     def _on_manage_tags(self, *_) -> None:
@@ -408,6 +361,8 @@ class MeetingExplorer(Gtk.Box):
         if not self._save_registry(registry):
             return
         self._rebuild_filter()
+        # The popovers cache the old registry, so rows are rebuilt from scratch.
+        self._list.clear()
         self._apply_filter()
 
     def _save_registry(self, registry: list[Tag]) -> bool:
@@ -450,31 +405,23 @@ class MeetingExplorer(Gtk.Box):
         self._error_label.set_visible(True)
 
     def _update_delete_sensitivity(self) -> None:
-        selected = any(rd["check"].get_active() for rd in self._meeting_rows)
-        self._delete_btn.set_sensitive(selected)
+        self._delete_btn.set_sensitive(any(r.check.get_active() for r in self._list.rows))
 
-    def _on_delete_single(self, row_data: dict) -> None:
-        """Delete a single meeting via its row trash button."""
-        self._confirm_and_delete([row_data])
-
-    def _open_folder(self, row_data: dict) -> None:
-        path = str(row_data["meeting"].path)
+    def _open_folder(self, meeting: Meeting) -> None:
         try:
-            subprocess.Popen(["xdg-open", path])
+            subprocess.Popen(["xdg-open", str(meeting.path)])
         except Exception:
             pass
 
     # -- Inline title editing --------------------------------------------------
 
-    def _on_rename_clicked(self, row_data: dict) -> None:
-        """Handle the 'Rename' button click."""
-        self._start_inline_edit(row_data)
-
-    def _start_inline_edit(self, row_data: dict) -> None:
+    def _start_inline_edit(self, row: MeetingRow) -> None:
         """Replace the title label with an editable entry."""
-        meeting = row_data["meeting"]
-        title_box = row_data["title_box"]
-        primary_label = row_data["primary_label"]
+        meeting = self._meeting_for(row.model)
+        if meeting is None:
+            return
+        primary_label = row.primary_label
+        title_box = row.title_box
 
         # If already editing, do nothing
         if not primary_label.get_visible():
@@ -517,24 +464,15 @@ class MeetingExplorer(Gtk.Box):
             # Rename in background
             def _bg():
                 try:
-                    write_metadata(
-                        meeting.path,
-                        {
-                            "title": new_title,
-                        },
-                    )
+                    write_metadata(meeting.path, {"title": new_title})
                     new_path = rename_meeting_dir(meeting, new_title)
+                    old_key = str(meeting.path)
                     meeting.path = new_path
                     meeting.title = new_title
                     meeting.time_label = new_path.name
-                    idle_call(_update_label, new_title)
+                    idle_call(self._after_rename, old_key, meeting)
                 except Exception as exc:
                     logger.warning("Inline rename failed: %s", exc)
-                    idle_call(_update_label, None)
-
-            def _update_label(title):
-                if title:
-                    primary_label.set_text(title)
 
             threading.Thread(target=_bg, daemon=True).start()
 
@@ -559,32 +497,26 @@ class MeetingExplorer(Gtk.Box):
         focus_ctl.connect("leave", _commit)
         entry.add_controller(focus_ctl)
 
-    def _on_title_double_click(self, n_press: int, row_data: dict) -> None:
-        """On double-click, start the inline editing process."""
-        if n_press != 2:
-            return
-        self._start_inline_edit(row_data)
-
-    # -- Summarize -------------------------------------------------------------
-
-    def _on_summarize_clicked(self, row_data: dict) -> None:
-        """Disable the button and delegate to the main window callback."""
-        btn = row_data.get("summarize_btn")
-        if btn:
-            btn.set_sensitive(False)
-        if self._on_summarize_callback:
-            self._on_summarize_callback(row_data["meeting"])
+    def _after_rename(self, old_key: str, meeting: Meeting) -> None:
+        """Re-key the row: its identity is the directory, which just moved."""
+        self._by_key.pop(old_key, None)
+        self._by_key[str(meeting.path)] = meeting
+        self._list.remove(old_key)
+        self._apply_filter()
 
     # -- Delete ----------------------------------------------------------------
 
     def _on_delete_clicked(self, *_) -> None:
-        selected = [rd for rd in self._meeting_rows if rd["check"].get_active()]
-        if not selected:
-            return
-        self._confirm_and_delete(selected)
+        selected = [
+            self._by_key[r.model.key]
+            for r in self._list.rows
+            if r.check.get_active() and r.model.key in self._by_key
+        ]
+        if selected:
+            self._confirm_and_delete(selected)
 
-    def _confirm_and_delete(self, rows: list[dict]) -> None:
-        count = len(rows)
+    def _confirm_and_delete(self, meetings: list[Meeting]) -> None:
+        count = len(meetings)
         # GTK4 has no blocking dialog; Gtk.AlertDialog.choose() is async, so the
         # delete proceeds in the _on_choice callback below.
         alert = Gtk.AlertDialog()
@@ -603,31 +535,23 @@ class MeetingExplorer(Gtk.Box):
             if idx != 1:
                 return  # Cancel
 
-            meetings_to_delete = [rd["meeting"] for rd in rows]
-
             def _bg():
                 cfg = settings.load()
                 output_folder = cfg.get("output_folder", "~/meetings")
-                succeeded, failures = delete_meetings(meetings_to_delete, output_folder)
-                idle_call(_done, succeeded, failures, rows)
+                succeeded, failures = delete_meetings(meetings, output_folder)
+                idle_call(_done, succeeded, failures)
 
-            def _done(succeeded, failures, rows):
-                succeeded_paths = {m.path for m in succeeded}
-                for rd in rows:
-                    if rd["meeting"].path in succeeded_paths:
-                        self._list_box.remove(rd["row"])
-                        self._meeting_rows.remove(rd)
+            def _done(succeeded, failures):
+                for meeting in succeeded:
+                    key = str(meeting.path)
+                    self._by_key.pop(key, None)
+                    if meeting in self._all_meetings:
+                        self._all_meetings.remove(meeting)
+                    self._list.remove(key)
                 if failures:
                     msgs = [f"{m.time_label}: {err}" for m, err in failures]
-                    escaped = GLib.markup_escape_text("; ".join(msgs))
-                    self._error_label.set_markup(
-                        f'<span foreground="red">Failed to delete: {escaped}</span>'
-                    )
-                    self._error_label.set_visible(True)
-                self._update_delete_sensitivity()
-                if not self._meeting_rows:
-                    self._empty_label.set_visible(True)
-                    self._list_box.set_visible(False)
+                    self._show_error(f"Failed to delete: {'; '.join(msgs)}")
+                self._apply_filter()
 
             threading.Thread(target=_bg, daemon=True).start()
 
@@ -635,15 +559,8 @@ class MeetingExplorer(Gtk.Box):
 
     # -- AI Title Generation ---------------------------------------------------
 
-    def _on_ai_title_clicked(self, row_data: dict) -> None:
-        meeting = row_data["meeting"]
-        ai_box = row_data["ai_box"]
-
-        # Replace AI button with spinner
-        remove_all_children(ai_box)
-        spinner = Gtk.Spinner()
-        spinner.start()
-        ai_box.append(spinner)
+    def _on_ai_title_clicked(self, row: MeetingRow, meeting: Meeting) -> None:
+        row.show_busy_action(True)
 
         def _bg():
             try:
@@ -670,35 +587,26 @@ class MeetingExplorer(Gtk.Box):
                 # Write metadata BEFORE rename (path must still be valid)
                 write_metadata(
                     meeting.path,
-                    {
-                        "title": title,
-                        "generated_at": datetime.now().isoformat(),
-                    },
+                    {"title": title, "generated_at": datetime.now().isoformat()},
                 )
 
-                # Rename folder on disk
+                old_key = str(meeting.path)
                 new_path = rename_meeting_dir(meeting, title)
                 meeting.path = new_path
                 meeting.title = title
                 meeting.time_label = new_path.name
 
-                idle_call(_done, title, None)
+                idle_call(_done, old_key, None)
 
             except Exception as exc:
-                idle_call(_done, None, str(exc))
+                idle_call(_done, str(meeting.path), str(exc))
 
-        def _done(title, error):
-            remove_all_children(ai_box)
-
-            if title:
-                row_data["primary_label"].set_text(title)
+        def _done(old_key, error):
+            row.show_busy_action(False)
+            if error:
+                self._show_error(f"Could not generate a title: {error}")
             else:
-                # Show error and restore AI button
-                escaped = GLib.markup_escape_text(error or "Unknown error")
-                row_data["secondary_label"].set_markup(
-                    f'<span size="small" foreground="red">{escaped}</span>'
-                )
-                ai_box.append(row_data["ai_btn"])
+                self._after_rename(old_key, meeting)
 
         threading.Thread(target=_bg, daemon=True).start()
 
