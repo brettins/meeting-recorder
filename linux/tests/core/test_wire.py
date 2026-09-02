@@ -86,3 +86,46 @@ def test_status_text_round_trips_into_job_view():
     # Absent status_text defaults to empty, not None.
     snap2 = snapshot_from_json(snapshot_to_json("idle", "", 0, 0, [job_to_dict(_job(2))]))
     assert snap2.jobs[0].status_text == ""
+
+
+class TestTitleTagsAndRecordingDir:
+    """The daemon owns the pending title/tags and the live recording folder, so
+    they travel in the snapshot rather than being held window-side."""
+
+    def test_round_trip_carries_title_tags_and_recording_dir(self):
+        payload = snapshot_to_json(
+            "recording",
+            "Recording…",
+            42,
+            0,
+            [],
+            title="Weekly Sync",
+            tags=["Work", "Urgent"],
+            recording_dir="/meetings/2026-03-01_14-30",
+        )
+        snap = snapshot_from_json(payload)
+
+        assert snap.title == "Weekly Sync"
+        assert snap.tags == ["Work", "Urgent"]
+        assert snap.recording_dir == "/meetings/2026-03-01_14-30"
+
+    def test_the_new_fields_default_to_empty(self):
+        snap = snapshot_from_json(snapshot_to_json("idle", "", 0, 0, []))
+        assert snap.title == ""
+        assert snap.tags == []
+        assert snap.recording_dir == ""
+
+    def test_a_payload_without_them_still_parses(self):
+        # An older daemon's snapshot must not break a newer window.
+        snap = snapshot_from_json('{"state": "idle", "jobs": []}')
+        assert snap.title == ""
+        assert snap.tags == []
+        assert snap.recording_dir == ""
+
+    def test_nulls_are_tolerated(self):
+        snap = snapshot_from_json(
+            '{"state": "idle", "title": null, "tags": null, "recording_dir": null}'
+        )
+        assert snap.title == ""
+        assert snap.tags == []
+        assert snap.recording_dir == ""

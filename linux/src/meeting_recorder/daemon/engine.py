@@ -71,6 +71,11 @@ class Engine:
         self._status = "Ready to record"
         self._elapsed = 0
         self._countdown = 0
+        # Title/tags for the recording being set up or already running. The
+        # daemon holds them (not the window) so the tray, a second window, and a
+        # window reopened mid-recording all render the same meeting.
+        self._pending_title: str | None = None
+        self._pending_tags: list[str] = []
         self._job_status_text: dict[int, str] = {}
         # Each processing job runs in a short-lived child process so the heavy
         # Gemini/Whisper stack never accumulates in the daemon. Tracked by
@@ -118,7 +123,16 @@ class Engine:
         job_dicts = [
             job_to_dict(j, self._job_status_text.get(j.job_id)) for j in self._job_manager.jobs
         ]
-        return snapshot_to_json(wire_state, self._status, self._elapsed, self._countdown, job_dicts)
+        return snapshot_to_json(
+            wire_state,
+            self._status,
+            self._elapsed,
+            self._countdown,
+            job_dicts,
+            title=self._pending_title or "",
+            tags=list(self._pending_tags),
+            recording_dir=getattr(self._controller, "meeting_dir", ""),
+        )
 
     def restore_persisted_jobs(self) -> None:
         """Re-offer jobs from the previous session (crash/quit recovery)."""
@@ -138,21 +152,23 @@ class Engine:
         if key_missing:
             self._emit_error(key_missing)
             return
-        self._controller.start(cfg, mode, self._pending_title, self._pending_tags)
-
-    # The window sends the meeting title with the start command; keep the last
-    # one so a tray-initiated start still records without a title.
-    _pending_title: str | None = None
+        self._controller.start(cfg, mode, self._pending_title, self._pending_tags or None)
 
     def set_title(self, title: str | None) -> None:
-        self._pending_title = title or None
+        """Name the next recording, or retitle the running one.
 
-    # Tags chosen on the Record tab before the recording starts, kept alongside
-    # the title so a tray-initiated start still applies the last selection.
-    _pending_tags: list[str] | None = None
+        While recording, the controller writes it to meeting.json immediately and
+        queues the folder rename for when ffmpeg lets go of the directory.
+        """
+        self._pending_title = (title or "").strip() or None
+        self._controller.set_title(self._pending_title)
+        self._changed()
 
     def set_tags(self, tags: list[str] | None) -> None:
-        self._pending_tags = list(tags) if tags else None
+        """Tag the next recording, or retag the running one (written at once)."""
+        self._pending_tags = list(tags or [])
+        self._controller.set_tags(self._pending_tags)
+        self._changed()
 
     def pause(self) -> None:
         self._controller.pause()
@@ -264,6 +280,10 @@ class Engine:
         if state == State.IDLE:
             self._elapsed = 0
             self._countdown = 0
+            # The title/tags belonged to the recording that just ended; the next
+            # one starts from a clean Record tab.
+            self._pending_title = None
+            self._pending_tags = []
         self._changed()
 
     def _on_recording_committed(self, pending: PendingRecording) -> None:
@@ -324,9 +344,21 @@ class Engine:
             self._controller.wait_until_stopped()
             if j.cancelled:
                 return
+            final = self._controller.take_final_paths()
+            if final is not None:
+                idle_call(self._adopt_recording_paths, j, final)
             idle_call(self._launch_processor, j)
 
         self._runner.submit(_wait_then_launch, job, description=f"await stop: {job.label}")
+
+    def _adopt_recording_paths(self, job: Job, pending: PendingRecording) -> None:
+        """Take the paths the queued title rename produced (main thread)."""
+        job.audio_path = pending.audio_path
+        job.transcript_path = pending.transcript_path
+        job.notes_path = pending.notes_path
+        job.label = pending.label
+        self._job_manager.persist()
+        self._changed()
 
     def _launch_processor(self, job: Job) -> None:
         if job.cancelled:
