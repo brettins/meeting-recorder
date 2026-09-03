@@ -8,6 +8,21 @@ APT_REPO="https://dipakmdhrm.github.io/meeting-recorder"
 KEYRING="/etc/apt/keyrings/meeting-recorder.gpg"
 SOURCES="/etc/apt/sources.list.d/meeting-recorder.list"
 
+# Stop a daemon left over from the previous version. dpkg has already replaced
+# the files underneath it, but the process keeps serving the old code it loaded
+# at startup — and the window is a thin client of that daemon over D-Bus, so a
+# freshly launched window still renders the old UI. Without this an upgrade
+# silently does nothing until the user finds and kills the daemon by hand.
+#
+# This lives in postinst rather than prerm because prerm comes from the version
+# being replaced: fixing it there only helps the upgrade after next.
+#
+# SIGTERM is handled — an in-progress recording is stopped with its audio kept,
+# and the window follows the daemon out because it watches the Engine bus name.
+# Nothing is restarted here: the tray autostart entry, the launcher and the CLI
+# each spawn a daemon on demand.
+pkill -TERM -f 'meeting-recorder(-daemon|-window|-process|-install)?$' 2>/dev/null || true
+
 # Create Python virtual environment and install dependencies
 python3 -m venv "$VENV_DIR" --system-site-packages
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip

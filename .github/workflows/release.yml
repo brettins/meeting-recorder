@@ -85,6 +85,11 @@ jobs:
           mkdir -p "$STAGING/usr/share/applications"
 
           cp -r linux/src/. "$STAGING/opt/meeting-recorder/linux/src/"
+          # Drop the build machine's bytecode. It is stale by definition (a .pyc for
+          # a module deleted since would ship as an orphan), it is not what the
+          # interpreter would write at the install path anyway, and it makes the
+          # package contents depend on whatever was last run locally.
+          find "$STAGING/opt/meeting-recorder" -name '__pycache__' -type d -prune -exec rm -rf {} +
           cp linux/requirements.txt "$STAGING/opt/meeting-recorder/"
           # Ship the pinned lock file; postinst prefers it for reproducible venvs.
           cp linux/requirements.lock "$STAGING/opt/meeting-recorder/"

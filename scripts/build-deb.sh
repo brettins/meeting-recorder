@@ -32,6 +32,11 @@ mkdir -p "$STAGING/DEBIAN" "$STAGING/opt/meeting-recorder/linux/src" \
          "$STAGING/usr/bin" "$STAGING/usr/share/applications"
 
 cp -r linux/src/. "$STAGING/opt/meeting-recorder/linux/src/"
+# Drop the build machine's bytecode. It is stale by definition (a .pyc for
+# a module deleted since would ship as an orphan), it is not what the
+# interpreter would write at the install path anyway, and it makes the
+# package contents depend on whatever was last run locally.
+find "$STAGING/opt/meeting-recorder" -name '__pycache__' -type d -prune -exec rm -rf {} +
 cp linux/requirements.txt linux/requirements.lock "$STAGING/opt/meeting-recorder/"
 cp linux/packaging/usr/bin/meeting-recorder "$STAGING/usr/bin/meeting-recorder"
 chmod 755 "$STAGING/usr/bin/meeting-recorder"

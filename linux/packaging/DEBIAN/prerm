@@ -1,8 +1,15 @@
 #!/bin/bash
 set -e
 
-# Stop any running instance before removal
-if pgrep -f "meeting_recorder" >/dev/null 2>&1; then
-    pkill -f "meeting_recorder" || true
-    sleep 1
-fi
+# Stop any running instance before removal.
+#
+# The pattern has to be the *setproctitle* names (__main__.py renames each role
+# to meeting-recorder-daemon / -window / -process / -install), not the module
+# name: pkill -f matches the visible command line, and after setproctitle no
+# process has "meeting_recorder" in it any more. The old underscore pattern
+# therefore matched nothing and left the daemon running.
+#
+# SIGTERM, not SIGKILL: the daemon handles it, stops an in-progress recording
+# keeping the audio, and lets queued jobs drain.
+pkill -TERM -f 'meeting-recorder(-daemon|-window|-process|-install)?$' 2>/dev/null || true
+sleep 1
