@@ -10,7 +10,7 @@ import json
 import pytest
 
 from meeting_recorder.config import settings
-from meeting_recorder.config.keyring_store import KeyringStore
+from meeting_recorder.config.keyring_store import KeyringStore, is_sandboxed_home
 
 # ── in-memory fake of the secretstorage API surface we use ───────────────────
 
@@ -80,7 +80,11 @@ def config_in_tmp(tmp_path, monkeypatch):
 
 
 def _store(**kw) -> KeyringStore:
-    return KeyringStore(secretstorage_module=FakeSecretStorage(**kw))
+    return KeyringStore(
+        secretstorage_module=FakeSecretStorage(**kw),
+        env={"HOME": "/home/tester"},
+        account_home="/home/tester",
+    )
 
 
 # ── KeyringStore ──────────────────────────────────────────────────────────────
@@ -117,6 +121,68 @@ class TestKeyringStore:
         store = _store(fail=True)
         assert store.available() is False
         assert store.get() is None
+
+    def test_replaced_key_is_kept_as_previous(self):
+        store = _store()
+        store.set("AIzaOriginal")
+        store.set("test-key-placeholder")
+        assert store.get() == "test-key-placeholder"
+        assert store.get_previous() == "AIzaOriginal"
+
+    def test_previous_is_none_before_any_replacement(self):
+        store = _store()
+        store.set("AIzaFirst")
+        assert store.get_previous() is None
+
+    def test_rewriting_the_same_key_does_not_shift_previous(self):
+        store = _store()
+        store.set("AIzaOriginal")
+        store.set("AIzaSecond")
+        store.set("AIzaSecond")
+        assert store.get_previous() == "AIzaOriginal"
+
+    def test_delete_keeps_the_deleted_key_as_previous(self):
+        store = _store()
+        store.set("AIzaOriginal")
+        assert store.delete() is True
+        assert store.get() is None
+        assert store.get_previous() == "AIzaOriginal"
+
+    def test_previous_unavailable_without_module(self):
+        assert KeyringStore(secretstorage_module=None).get_previous() is None
+
+
+class TestSandboxedHome:
+    def test_redirected_home_is_sandboxed(self):
+        assert is_sandboxed_home({"HOME": "/tmp/sandbox"}, "/home/tester") is True
+
+    def test_matching_home_is_not_sandboxed(self):
+        assert is_sandboxed_home({"HOME": "/home/tester"}, "/home/tester") is False
+
+    def test_trailing_slash_is_not_a_redirect(self):
+        assert is_sandboxed_home({"HOME": "/home/tester/"}, "/home/tester") is False
+
+    def test_unknown_account_home_does_not_block(self):
+        assert is_sandboxed_home({"HOME": "/tmp/sandbox"}, "") is False
+
+    def test_missing_home_does_not_block(self):
+        assert is_sandboxed_home({}, "/home/tester") is False
+
+    def test_store_ignores_the_keyring_under_a_redirected_home(self):
+        collection = FakeCollection()
+        collection.create_item(
+            "x", {"application": "meeting-recorder", "purpose": "gemini-api-key"}, b"AIzaReal"
+        )
+        store = KeyringStore(
+            secretstorage_module=FakeSecretStorage(collection=collection),
+            env={"HOME": "/tmp/sandbox"},
+            account_home="/home/tester",
+        )
+        assert store.available() is False
+        assert store.get() is None
+        assert store.set("test-key-placeholder") is False
+        assert store.delete() is False
+        assert bytes(collection.items[0].get_secret()) == b"AIzaReal"
 
     def test_unlocks_locked_collection(self):
         store = KeyringStore(
