@@ -276,7 +276,13 @@ class Engine:
     # ------------------------------------------------------------------
 
     def _on_state(self, state: State, status: str) -> None:
-        self._status = status or self._status
+        if status:
+            self._status = status
+        elif state == State.IDLE:
+            # Committing a recording reports IDLE with no message. Falling back
+            # to the previous status there left "Recording… (headphones mode)"
+            # on screen after the recording had stopped.
+            self._status = "Ready to record"
         if state == State.IDLE:
             self._elapsed = 0
             self._countdown = 0

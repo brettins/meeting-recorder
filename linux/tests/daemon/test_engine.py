@@ -374,3 +374,33 @@ def test_a_renamed_recording_folder_is_adopted_by_its_job(engine, tmp_path):
     assert job.transcript_path == renamed / "transcript.md"
     assert job.notes_path == renamed / "notes.md"
     assert job.label == "2026-03-01_14-30 Weekly Sync"
+
+
+def test_committing_a_recording_clears_the_recording_status(engine, monkeypatch):
+    """Stopping reports IDLE with no message; the old status must not survive it.
+
+    Falling back to the previous status left "Recording… (headphones mode)" on
+    screen after the recording had already stopped.
+    """
+    _allow_start(monkeypatch)
+    engine.start_recording("headphones")
+    assert "Recording" in json.loads(engine.snapshot_json())["status"]
+
+    engine._on_state(State.IDLE, "")
+
+    assert json.loads(engine.snapshot_json())["status"] == "Ready to record"
+
+
+def test_an_explicit_idle_message_is_still_shown(engine):
+    engine._on_state(State.IDLE, "Recording discarded.")
+    assert json.loads(engine.snapshot_json())["status"] == "Recording discarded."
+
+
+def test_a_blank_status_mid_recording_keeps_the_previous_one(engine, monkeypatch):
+    _allow_start(monkeypatch)
+    engine.start_recording("headphones")
+    before = json.loads(engine.snapshot_json())["status"]
+
+    engine._on_state(State.RECORDING, "")
+
+    assert json.loads(engine.snapshot_json())["status"] == before

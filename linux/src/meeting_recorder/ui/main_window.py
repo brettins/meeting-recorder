@@ -90,8 +90,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._recording_mode: str = "headphones"
         self._snapshot = Snapshot()
         # Guards the title entry against re-emitting "changed" while a snapshot
-        # is being rendered into it.
+        # is being rendered into it; _editing_title marks a local edit the
+        # daemon has not echoed back yet.
         self._syncing = False
+        self._editing_title = False
 
         self._build_ui()
         # Paint the current daemon state immediately, then live-update on signals.
@@ -404,16 +406,32 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_title_changed(self, *_) -> None:
         if self._syncing:
             return
+        self._editing_title = True
         self._engine.set_title(self._title_entry.get_text().strip())
 
     def _sync_title_and_tags(self, snap: Snapshot) -> None:
-        """Render the daemon's title/tags without fighting the user's typing."""
-        self._syncing = True
-        try:
-            if not self._title_entry.has_focus() and self._title_entry.get_text() != snap.title:
+        """Render the daemon's title/tags without fighting the user's typing.
+
+        A snapshot in flight carries whatever the daemon knew a moment ago, so
+        writing it into the entry can undo a keystroke that overtook it. The
+        guard is "has this window edited the title since the daemon last agreed
+        with it", not widget focus: focus depends on the window manager having
+        activated the toplevel, which is false in plenty of situations where the
+        user is still the one driving.
+
+        The daemon clearing the title because the recording ended overrides that
+        — there is no edit left to protect, and skipping it left the finished
+        meeting's name sitting in the box.
+        """
+        if snap.title == self._title_entry.get_text():
+            self._editing_title = False  # the daemon has caught up
+        elif (snap.state == "idle" and not snap.title) or not self._editing_title:
+            self._editing_title = False
+            self._syncing = True
+            try:
                 self._title_entry.set_text(snap.title)
-        finally:
-            self._syncing = False
+            finally:
+                self._syncing = False
 
         if snap.tags != self._tags:
             self._tags = list(snap.tags)
