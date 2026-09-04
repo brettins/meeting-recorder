@@ -122,35 +122,6 @@ class TestKeyringStore:
         assert store.available() is False
         assert store.get() is None
 
-    def test_replaced_key_is_kept_as_previous(self):
-        store = _store()
-        store.set("AIzaOriginal")
-        store.set("test-key-placeholder")
-        assert store.get() == "test-key-placeholder"
-        assert store.get_previous() == "AIzaOriginal"
-
-    def test_previous_is_none_before_any_replacement(self):
-        store = _store()
-        store.set("AIzaFirst")
-        assert store.get_previous() is None
-
-    def test_rewriting_the_same_key_does_not_shift_previous(self):
-        store = _store()
-        store.set("AIzaOriginal")
-        store.set("AIzaSecond")
-        store.set("AIzaSecond")
-        assert store.get_previous() == "AIzaOriginal"
-
-    def test_delete_keeps_the_deleted_key_as_previous(self):
-        store = _store()
-        store.set("AIzaOriginal")
-        assert store.delete() is True
-        assert store.get() is None
-        assert store.get_previous() == "AIzaOriginal"
-
-    def test_previous_unavailable_without_module(self):
-        assert KeyringStore(secretstorage_module=None).get_previous() is None
-
 
 class TestSandboxedHome:
     def test_redirected_home_is_sandboxed(self):

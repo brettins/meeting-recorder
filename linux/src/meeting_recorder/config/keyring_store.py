@@ -23,9 +23,6 @@ logger = logging.getLogger(__name__)
 _ATTRIBUTES = {"application": "meeting-recorder", "purpose": "gemini-api-key"}
 _LABEL = "Meeting Recorder — Gemini API key"
 
-_PREVIOUS_ATTRIBUTES = {"application": "meeting-recorder", "purpose": "gemini-api-key-previous"}
-_PREVIOUS_LABEL = "Meeting Recorder — Gemini API key (previous)"
-
 _UNSET = object()
 
 
@@ -126,7 +123,6 @@ class KeyringStore:
         try:
             conn, collection = self._open()
             try:
-                self._keep_previous(collection, value)
                 collection.create_item(_LABEL, _ATTRIBUTES, value.encode("utf-8"), replace=True)
                 return True
             finally:
@@ -142,7 +138,6 @@ class KeyringStore:
         try:
             conn, collection = self._open()
             try:
-                self._keep_previous(collection, "")
                 for item in collection.search_items(_ATTRIBUTES):
                     item.delete()
                 return True
@@ -152,46 +147,7 @@ class KeyringStore:
             logger.warning("Could not delete API key from keyring: %s", exc)
             return False
 
-    def get_previous(self) -> str | None:
-        """Return the key this store last replaced, or None if there is none."""
-        if self._ss is None:
-            return None
-        try:
-            conn, collection = self._open()
-            try:
-                for item in collection.search_items(_PREVIOUS_ATTRIBUTES):
-                    return bytes(item.get_secret()).decode("utf-8")
-                return None
-            finally:
-                conn.close()
-        except Exception as exc:
-            logger.warning("Could not read the replaced API key from keyring: %s", exc)
-            return None
-
     # ------------------------------------------------------------------
-
-    def _keep_previous(self, collection: Any, incoming: str) -> None:
-        """Park the key that is about to be replaced under a second entry.
-
-        A save writes over the stored key with no undo, and a key pasted by
-        mistake — or by another process sharing this session bus — otherwise
-        destroys the working one. Keeping one generation back costs a single
-        extra keyring entry and makes that recoverable.
-        """
-        try:
-            for item in collection.search_items(_ATTRIBUTES):
-                current = bytes(item.get_secret()).decode("utf-8")
-                if not current or current == incoming:
-                    return
-                collection.create_item(
-                    _PREVIOUS_LABEL,
-                    _PREVIOUS_ATTRIBUTES,
-                    current.encode("utf-8"),
-                    replace=True,
-                )
-                return
-        except Exception as exc:
-            logger.warning("Could not keep a copy of the replaced API key: %s", exc)
 
     def _open(self) -> tuple[Any, Any]:
         conn = self._ss.dbus_init()
