@@ -92,7 +92,7 @@ class SettingsDialog(Adw.Window):
         # Pages own their tab's widgets and save logic; injected dependencies
         # are passed straight through (ModelsPage applies the real production
         # defaults for any that are None).
-        self._general_page = GeneralPage(cfg, self)
+        self._general_page = GeneralPage(cfg, self, engine=engine)
         self._models_page = ModelsPage(
             cfg,
             whisper_checker=whisper_checker,

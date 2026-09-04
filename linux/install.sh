@@ -14,6 +14,26 @@ APPS_DIR="$HOME/.local/share/applications"
 LAUNCHER="$BIN_DIR/$APP_NAME"
 DESKTOP="$APPS_DIR/$APP_ID.desktop"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SOURCE_RECORD="$INSTALL_DIR/install-source.json"
+
+# --skip-deps re-runs the parts that live under $HOME and nothing else, so an
+# update needs no password. The three steps it skips — distro packages, the
+# GNOME tray extension, and /var/log/meeting-recorder — are the only ones that
+# call sudo, and all three are first-install concerns: the packages are already
+# there, and logging falls back to ~/.local/share/meeting-recorder when the
+# system log directory is not writable.
+SKIP_DEPS=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-deps|--update) SKIP_DEPS=1 ;;
+        -h|--help)
+            echo "usage: install.sh [--skip-deps]"
+            echo "  --skip-deps  reinstall the app only; no sudo, no distro packages"
+            exit 0 ;;
+        *) err "Unknown option: $arg"; exit 2 ;;
+    esac
+done
 
 # ── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; NC='\033[0m'
@@ -44,7 +64,9 @@ install_deps_pacman() {
 
 }
 
-if command -v apt-get &>/dev/null; then
+if [[ "$SKIP_DEPS" -eq 1 ]]; then
+    info "Skipping system dependencies (--skip-deps)."
+elif command -v apt-get &>/dev/null; then
     install_deps_apt
 elif command -v dnf &>/dev/null; then
     install_deps_dnf
@@ -72,7 +94,7 @@ install_gnome_extensions() {
     fi
 }
 
-install_gnome_extensions
+[[ "$SKIP_DEPS" -eq 1 ]] || install_gnome_extensions
 
 # ── 4. Virtual environment ───────────────────────────────────────────────────
 info "Creating virtual environment at $VENV_DIR…"
@@ -96,11 +118,17 @@ mkdir -p "$INSTALL_DIR/linux"
 cp -r "$SCRIPT_DIR/src" "$INSTALL_DIR/linux/"
 
 # ── 7. System log directory ──────────────────────────────────────────────────
-SYSTEM_LOG_DIR="/var/log/meeting-recorder"
-info "Creating system log directory at $SYSTEM_LOG_DIR…"
-sudo mkdir -p "$SYSTEM_LOG_DIR"
-sudo chown "$USER:$USER" "$SYSTEM_LOG_DIR"
-sudo chmod 755 "$SYSTEM_LOG_DIR"
+# Optional: logging_setup falls back to ~/.local/share/meeting-recorder when
+# this is missing or unwritable, so an update never needs root for it.
+if [[ "$SKIP_DEPS" -eq 1 ]]; then
+    info "Leaving the system log directory alone (--skip-deps)."
+else
+    SYSTEM_LOG_DIR="/var/log/meeting-recorder"
+    info "Creating system log directory at $SYSTEM_LOG_DIR…"
+    sudo mkdir -p "$SYSTEM_LOG_DIR"
+    sudo chown "$USER:$USER" "$SYSTEM_LOG_DIR"
+    sudo chmod 755 "$SYSTEM_LOG_DIR"
+fi
 
 # ── 8. Launcher script ───────────────────────────────────────────────────────
 mkdir -p "$BIN_DIR"
@@ -150,6 +178,19 @@ if ! echo "$PATH" | grep -q "$BIN_DIR"; then
     warn "$BIN_DIR is not in your PATH."
     warn "Add it to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
+
+# ── 11. Record where this came from ─────────────────────────────────────────
+# The in-app updater re-runs this script from the same checkout, so the path and
+# the revision it was installed at are written next to the install.
+INSTALLED_REVISION="$(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null || echo unknown)"
+cat > "$SOURCE_RECORD" << SOURCE_EOF
+{
+  "repo": "$REPO_DIR",
+  "script": "$SCRIPT_DIR/install.sh",
+  "revision": "$INSTALLED_REVISION"
+}
+SOURCE_EOF
+info "Recorded install source: $REPO_DIR @ $INSTALLED_REVISION"
 
 echo
 info "Installation complete!"
