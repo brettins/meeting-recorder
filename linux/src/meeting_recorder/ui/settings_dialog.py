@@ -45,7 +45,7 @@ from ..services.whisper_cpp_service import (
 )
 from ..services.whisper_service import WhisperDownloader, WhisperStatusChecker
 from ..utils.autostart import update_autostart
-from .settings_pages import GeneralPage, IdComboRow, ModelsPage, PromptsPage
+from .settings_pages import GeneralPage, IdComboRow, ModelsPage, NotionPage, PromptsPage
 from .settings_visibility import compute_section_visibility
 
 __all__ = ["IdComboRow", "SettingsDialog", "compute_section_visibility"]
@@ -110,7 +110,13 @@ class SettingsDialog(Adw.Window):
             engine=engine,
         )
         self._prompts_page = PromptsPage(cfg)
-        self._pages = (self._general_page, self._models_page, self._prompts_page)
+        self._notion_page = NotionPage(cfg)
+        self._pages = (
+            self._general_page,
+            self._models_page,
+            self._prompts_page,
+            self._notion_page,
+        )
 
         self._build_ui()
 
@@ -166,6 +172,9 @@ class SettingsDialog(Adw.Window):
         )
         self._stack.add_titled_with_icon(
             self._prompts_page.widget, "prompts", "Prompts", "document-edit-symbolic"
+        )
+        self._stack.add_titled_with_icon(
+            self._notion_page.widget, "notion", "Notion", "send-to-symbolic"
         )
 
         # Kick off background status checks.

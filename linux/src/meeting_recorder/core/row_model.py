@@ -30,6 +30,7 @@ DETAILS = "details"
 # Meeting actions.
 AI_TITLE = "ai_title"
 SUMMARIZE = "summarize"
+FILE_TO_NOTION = "file_to_notion"
 TAG = "tag"
 RENAME = "rename"
 OPEN_FOLDER = "open_folder"
@@ -92,18 +93,23 @@ def meeting_actions(
     has_audio: bool,
     has_title: bool,
     can_summarize: bool,
+    can_file_to_notion: bool = False,
 ) -> tuple[str, ...]:
     """Which meeting actions a settled row offers.
 
     "Generate title" only makes sense once there are notes to generate it from
     and while the meeting is still unnamed; "Transcribe" only when there is
-    audio and nothing has been made of it yet.
+    audio and nothing has been made of it yet. "File to Notion" needs both a
+    configured workspace and something written to file — audio on its own has
+    no page worth making.
     """
     actions: list[str] = []
     if has_notes and not has_title:
         actions.append(AI_TITLE)
     if can_summarize and has_audio and not has_transcript and not has_notes:
         actions.append(SUMMARIZE)
+    if can_file_to_notion and (has_notes or has_transcript):
+        actions.append(FILE_TO_NOTION)
     actions.extend((TAG, RENAME, OPEN_FOLDER, DELETE))
     return tuple(actions)
 
@@ -157,7 +163,9 @@ def row_from_job(job) -> RowModel:
     )
 
 
-def row_from_meeting(meeting, job=None, *, is_recording: bool = False) -> RowModel:
+def row_from_meeting(
+    meeting, job=None, *, is_recording: bool = False, can_file_to_notion: bool = False
+) -> RowModel:
     """A Library row: a scanned meeting, in whatever state its job puts it."""
     state = RECORDING if is_recording else state_for_job(job.status if job else None)
     settled = meeting_actions(
@@ -166,6 +174,7 @@ def row_from_meeting(meeting, job=None, *, is_recording: bool = False) -> RowMod
         has_audio=meeting.has_audio,
         has_title=meeting.title is not None,
         can_summarize=True,
+        can_file_to_notion=can_file_to_notion,
     )
     # A duration probed from a half-written file is noise, so a row that is
     # still recording shows the clock instead of a length.

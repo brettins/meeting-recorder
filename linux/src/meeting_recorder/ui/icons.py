@@ -7,7 +7,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk
 
-from .icons_model import TAG_ICONS, TAG_LIST_ICONS, pick_icon_name
+from .icons_model import NOTION_ICONS, TAG_ICONS, TAG_LIST_ICONS, pick_icon_name
 
 
 def _has_icon(name: str) -> bool:
@@ -25,3 +25,8 @@ def tag_icon() -> str:
 def tag_list_icon() -> str:
     """Icon for "manage the tag list"."""
     return pick_icon_name(TAG_LIST_ICONS, _has_icon)
+
+
+def notion_icon() -> str:
+    """Icon for "file this into Notion" — a send/export shape."""
+    return pick_icon_name(NOTION_ICONS, _has_icon)

@@ -24,6 +24,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk
 
 from meeting_recorder.config import settings
 from meeting_recorder.config.defaults import TITLE_PROMPT
+from meeting_recorder.config.notion_config import load_workspaces
 from meeting_recorder.config.tags import (
     UNTAGGED,
     Tag,
@@ -51,6 +52,7 @@ from ..core import row_model as rm
 from ..utils.glib_bridge import idle_call
 from .icons import tag_list_icon
 from .meeting_row import MeetingRow, RowListView
+from .notion_dialog import NotionFileDialog
 from .tag_widgets import TagAssignPopover, TagManageDialog
 
 logger = logging.getLogger(__name__)
@@ -141,6 +143,7 @@ class MeetingExplorer(Gtk.Box):
         self._all_meetings: list[Meeting] = []
         self._by_key: dict[str, Meeting] = {}
         self._jobs: list = []
+        self._notion_workspaces: list = []
         self._recording_dir = ""
         self._job_signature: tuple = ()
 
@@ -169,6 +172,7 @@ class MeetingExplorer(Gtk.Box):
         cfg = settings.load()
         output_folder = cfg.get("output_folder", "~/meetings")
         self._registry = parse_tags(cfg.get("tags"))
+        self._notion_workspaces = load_workspaces(cfg)
         self._colors = color_map(self._registry)
         self._rebuild_filter()
         self._all_meetings = scan_meetings(output_folder)
@@ -208,6 +212,7 @@ class MeetingExplorer(Gtk.Box):
                 m,
                 jobs_by_dir.get(str(m.path)),
                 is_recording=str(m.path) == self._recording_dir,
+                can_file_to_notion=bool(self._notion_workspaces),
             )
             for m in meetings
         ]
@@ -254,6 +259,8 @@ class MeetingExplorer(Gtk.Box):
             self._start_inline_edit(row)
         elif action == rm.AI_TITLE and row is not None:
             self._on_ai_title_clicked(row, meeting)
+        elif action == rm.FILE_TO_NOTION:
+            self._open_notion_dialog(meeting)
         elif action == rm.SUMMARIZE:
             if row is not None:
                 row.set_action_sensitive(rm.SUMMARIZE, False)
@@ -401,8 +408,28 @@ class MeetingExplorer(Gtk.Box):
             meeting.tags = updated
 
     def _show_error(self, message: str) -> None:
+        self._error_label.add_css_class("error")
         self._error_label.set_text(message)
         self._error_label.set_visible(True)
+
+    def _show_notice(self, message: str) -> None:
+        """Report something that went right, in the same place errors appear."""
+        self._error_label.remove_css_class("error")
+        self._error_label.set_text(message)
+        self._error_label.set_visible(True)
+
+    def _open_notion_dialog(self, meeting: Meeting) -> None:
+        if not self._notion_workspaces:
+            self._show_error("No Notion workspace is configured. Add one in Settings → Notion.")
+            return
+        window = self.get_root()
+        dialog = NotionFileDialog(
+            window if isinstance(window, Gtk.Window) else None,
+            meeting,
+            self._notion_workspaces,
+            on_finished=self._show_notice,
+        )
+        dialog.present()
 
     def _update_delete_sensitivity(self) -> None:
         self._delete_btn.set_sensitive(any(r.check.get_active() for r in self._list.rows))
