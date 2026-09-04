@@ -30,8 +30,8 @@ class FakeClient:
         self.uploaded.append(path)
         return "upload1"
 
-    def attach_file(self, page_id, property_name, upload_id, filename):
-        self.attached.append((page_id, property_name, upload_id, filename))
+    def attach_file(self, page_id, property_name, upload_id):
+        self.attached.append((page_id, property_name, upload_id))
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ class TestFileMeeting:
         assert result.notes_written and result.transcript_written and result.audio_attached
         assert client.appended[0][0] == "page1"
         assert client.uploaded == [meeting / "recording.mp3"]
-        assert client.attached == [("page1", "Recording", "upload1", "recording.mp3")]
+        assert client.attached == [("page1", "Recording", "upload1")]
 
     def test_notes_are_written_before_the_upload(self, meeting):
         order = []

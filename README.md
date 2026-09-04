@@ -59,11 +59,37 @@ The base install is **Gemini-only and minimal** — no local engines or GPU libr
 | Service | Requirement |
 |---|---|
 | **Gemini** (transcription or summarization) | Free API key from [aistudio.google.com](https://aistudio.google.com) — no local install |
-
-> Your API key is stored in the system keyring (GNOME Keyring / KWallet) when one is available, falling back to a permission-restricted config file otherwise.
 | **Whisper** (local transcription) | Engine (`faster-whisper`) installed on opt-in; model downloaded from HuggingFace (~500 MB – 3 GB); **NVIDIA GPU or CPU** |
 | **whisper.cpp** (local transcription, GPU) | Engine built from source on opt-in with the detected backend — **AMD (ROCm/Vulkan), Apple (Metal), NVIDIA (CUDA), or CPU**; GGML model downloaded from HuggingFace |
 | **Ollama** (local summarization) | [Ollama](https://ollama.com) installed and running (`ollama serve`); uses NVIDIA/AMD/Apple GPU automatically |
+
+> Your API key is stored in the system keyring (GNOME Keyring / KWallet) when one is available, falling back to a permission-restricted config file otherwise.
+
+### Filing meetings into Notion
+
+A finished meeting can be pushed onto a page in a Notion meetings database: the notes become
+page content, the transcript is folded into a collapsed toggle, and the recording is attached
+to a files property on the page.
+
+Set it up in **Settings → Notion**:
+
+1. In the Notion workspace you want to file into, open **Settings → Connections → Develop or
+   manage integrations**, create an internal integration, and copy its token.
+2. Open the meetings database in Notion, and from its **•••** menu → **Connections**, share it
+   with that integration.
+3. Add a workspace in Settings → Notion with a name, the database link, the token, and the name
+   of the files property that should hold the recording (for example `Recording`).
+
+A token belongs to one workspace, so add one entry per workspace. Tokens are stored in the
+system keyring, never in the config file.
+
+Then click the send icon on any meeting in the library. The picker lists the pages in that
+database with the one dated the same day already selected; creating a new page is a separate
+button.
+
+> Notion accepts 5 MiB per file on a free workspace and 5 GiB on a paid one. A recording over
+> that limit is reported and the notes are still filed.
+
 
 ### Installation
 

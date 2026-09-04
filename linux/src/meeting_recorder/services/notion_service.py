@@ -266,25 +266,29 @@ class NotionClient:
             {"mode": "single_part", "filename": path.name, "content_type": content_type},
         )
         upload_id = str(created.get("id") or "")
-        upload_url = str(created.get("upload_url") or "")
-        if not upload_id or not upload_url:
+        if not upload_id:
             raise NotionError("Notion did not return an upload target for the recording.")
+        # The create response carries the send URL; it is also derivable, so a
+        # reply without it is not a reason to lose the recording.
+        upload_url = str(created.get("upload_url") or "")
+        if not upload_url:
+            upload_url = f"{API_ROOT}/file_uploads/{upload_id}/send"
         body, header = encode_multipart(path.name, content_type, data)
         self._send(upload_url, "POST", body, {"Content-Type": header})
         return upload_id
 
-    def attach_file(self, page_id: str, property_name: str, upload_id: str, filename: str) -> None:
-        """Point a ``files`` property at an already-uploaded file."""
+    def attach_file(self, page_id: str, property_name: str, upload_id: str) -> None:
+        """Point a ``files`` property at an already-uploaded file.
+
+        Notion names the entry after the uploaded file itself, so no name is
+        sent: a ``name`` alongside a ``file_upload`` is not part of the
+        documented shape.
+        """
         payload = {
             "properties": {
                 property_name: {
-                    "files": [
-                        {
-                            "type": "file_upload",
-                            "file_upload": {"id": upload_id},
-                            "name": filename,
-                        }
-                    ]
+                    "type": "files",
+                    "files": [{"type": "file_upload", "file_upload": {"id": upload_id}}],
                 }
             }
         }

@@ -108,6 +108,60 @@ class TestMeetingActions:
         )
         assert actions == (rm.TAG, rm.RENAME, rm.OPEN_FOLDER, rm.DELETE)
 
+    def test_notes_offer_notion_filing_when_a_workspace_exists(self):
+        actions = rm.meeting_actions(
+            has_notes=True,
+            has_transcript=False,
+            has_audio=True,
+            has_title=True,
+            can_summarize=True,
+            can_file_to_notion=True,
+        )
+        assert rm.FILE_TO_NOTION in actions
+
+    def test_a_transcript_alone_is_enough_to_file(self):
+        actions = rm.meeting_actions(
+            has_notes=False,
+            has_transcript=True,
+            has_audio=True,
+            has_title=True,
+            can_summarize=True,
+            can_file_to_notion=True,
+        )
+        assert rm.FILE_TO_NOTION in actions
+
+    def test_audio_alone_is_not_worth_a_notion_page(self):
+        actions = rm.meeting_actions(
+            has_notes=False,
+            has_transcript=False,
+            has_audio=True,
+            has_title=True,
+            can_summarize=True,
+            can_file_to_notion=True,
+        )
+        assert rm.FILE_TO_NOTION not in actions
+
+    def test_no_configured_workspace_hides_the_action(self):
+        actions = rm.meeting_actions(
+            has_notes=True,
+            has_transcript=True,
+            has_audio=True,
+            has_title=True,
+            can_summarize=True,
+            can_file_to_notion=False,
+        )
+        assert rm.FILE_TO_NOTION not in actions
+
+    def test_filing_is_off_by_default(self):
+        actions = rm.meeting_actions(
+            has_notes=True,
+            has_transcript=True,
+            has_audio=True,
+            has_title=True,
+            can_summarize=True,
+        )
+        assert rm.FILE_TO_NOTION not in actions
+
 
 class TestRowActions:
     def test_a_recording_row_offers_nothing(self):
@@ -232,3 +286,21 @@ class TestRowFromMeeting:
     def test_tags_are_carried_onto_the_row(self):
         model = rm.row_from_meeting(make_meeting(tags=["Work", "Urgent"]))
         assert model.tags == ["Work", "Urgent"]
+
+
+class TestNotionRowIntegration:
+    def test_a_ready_meeting_row_can_offer_filing(self):
+        meeting = make_meeting(has_notes=True, title="Marketing")
+        row = rm.row_from_meeting(meeting, can_file_to_notion=True)
+        assert rm.FILE_TO_NOTION in row.actions
+
+    def test_a_processing_row_never_offers_filing(self):
+        meeting = make_meeting(has_notes=True, title="Marketing")
+        job = make_job(status=JobStatus.PROCESSING)
+        row = rm.row_from_meeting(meeting, job, can_file_to_notion=True)
+        assert rm.FILE_TO_NOTION not in row.actions
+
+    def test_a_recording_row_never_offers_filing(self):
+        meeting = make_meeting(has_notes=True, title="Marketing")
+        row = rm.row_from_meeting(meeting, is_recording=True, can_file_to_notion=True)
+        assert row.actions == ()

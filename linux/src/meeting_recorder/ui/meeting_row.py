@@ -31,6 +31,7 @@ from ..core.row_model import (
     DETAILS,
     DISMISS,
     ERROR,
+    FILE_TO_NOTION,
     OPEN_FOLDER,
     PROCESSING,
     RECORDING,
@@ -42,7 +43,7 @@ from ..core.row_model import (
     RowModel,
 )
 from ..utils.gtk_compat import remove_all_children
-from .icons import tag_icon
+from .icons import notion_icon, tag_icon
 from .tag_widgets import make_tag_chip
 
 # id -> (kind, icon-or-label, tooltip). "icon" buttons are the quiet per-meeting
@@ -212,7 +213,11 @@ class MeetingRow(Gtk.ListBoxRow):
     def _rebuild_actions(self, model: RowModel) -> None:
         remove_all_children(self._actions)
         for action in model.actions:
-            if action == TAG:
+            if action == FILE_TO_NOTION:
+                btn = Gtk.Button(icon_name=notion_icon())
+                btn.set_tooltip_text("File this meeting into Notion")
+                btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
+            elif action == TAG:
                 btn = Gtk.MenuButton(icon_name=tag_icon())
                 btn.set_tooltip_text("Tag this meeting")
                 if self._tag_popover_factory is not None:

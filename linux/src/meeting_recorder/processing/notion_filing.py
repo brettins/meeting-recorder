@@ -113,7 +113,7 @@ def file_meeting(
     progress("Uploading the recording…")
     try:
         upload_id = client.upload_file(audio_path)
-        client.attach_file(page.id, files_property, upload_id, audio_path.name)
+        client.attach_file(page.id, files_property, upload_id)
         result.audio_attached = True
     except NotionError as exc:
         # The notes are already on the page; losing them to re-raise here would

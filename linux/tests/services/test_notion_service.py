@@ -273,11 +273,11 @@ class TestClientRequests:
 
     def test_attach_file_points_the_property_at_the_upload(self):
         client, opener = _client([{}])
-        client.attach_file("page1", "Recording", "up1", "recording.mp3")
+        client.attach_file("page1", "Recording", "up1")
         body = json.loads(opener.requests[0].data)
-        entry = body["properties"]["Recording"]["files"][0]
-        assert entry["file_upload"] == {"id": "up1"}
-        assert entry["name"] == "recording.mp3"
+        prop = body["properties"]["Recording"]
+        assert prop["type"] == "files"
+        assert prop["files"] == [{"type": "file_upload", "file_upload": {"id": "up1"}}]
 
 
 class TestUpload:
@@ -303,10 +303,17 @@ class TestUpload:
             client.upload_file(audio)
         assert opener.requests == []
 
-    def test_missing_upload_target_is_reported(self, tmp_path):
+    def test_a_reply_without_an_upload_url_falls_back_to_the_send_path(self, tmp_path):
         audio = tmp_path / "recording.mp3"
         audio.write_bytes(b"x")
-        client, _ = _client([{"id": "up1"}])
+        client, opener = _client([{"id": "up1"}, b""])
+        assert client.upload_file(audio) == "up1"
+        assert opener.requests[1].full_url.endswith("/file_uploads/up1/send")
+
+    def test_a_reply_without_an_id_is_reported(self, tmp_path):
+        audio = tmp_path / "recording.mp3"
+        audio.write_bytes(b"x")
+        client, _ = _client([{"upload_url": "https://upload/1"}])
         with pytest.raises(NotionError, match="upload target"):
             client.upload_file(audio)
 
