@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 APP_ID = "io.github.dipakmdhrm.MeetingRecorder"
-APP_NAME = "Meeting Recorder"
+APP_NAME = "Brett's Meeting Recorder"
 CONFIG_DIR = "~/.config/meeting-recorder"
 CONFIG_FILE = "~/.config/meeting-recorder/config.json"
 DEFAULT_OUTPUT_FOLDER = "~/meetings"
@@ -139,6 +139,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # by clearing the field, without needing a separate "use default" flag.
     # Tag registry: [{"name": ..., "color": <palette name>}, ...]. See config/tags.py.
     "tags": [],
+    # Notion workspaces to file meetings into. Each entry is
+    # {"id", "name", "database_id", "files_property"}; the integration token
+    # for each lives in the keyring, never here. See config/notion_config.py.
+    # settings.load() only keeps keys present here, so a key missing from this
+    # dict is silently dropped on every read.
+    "notion_workspaces": [],
     "transcription_prompt": "",
     "summarization_prompt": "",
     "title_prompt": "",

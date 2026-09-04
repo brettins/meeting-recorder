@@ -1,5 +1,7 @@
 """Tests for the Notion workspace registry and its id/URL handling."""
 
+from meeting_recorder.config import settings
+from meeting_recorder.config.defaults import DEFAULT_CONFIG
 from meeting_recorder.config.notion_config import (
     CONFIG_KEY,
     NotionWorkspace,
@@ -178,3 +180,37 @@ class TestMutations:
     def test_find_returns_the_match_or_none(self):
         assert find_workspace([_ws()], "sing") == _ws()
         assert find_workspace([_ws()], "missing") is None
+
+
+class TestSettingsRoundTrip:
+    """settings.load() keeps only keys present in DEFAULT_CONFIG.
+
+    A workspace list written to config.json by the settings dialog was read
+    back as nothing, because the key was not declared as a default — so the
+    Notion action never appeared and the picker had no workspace to open.
+    """
+
+    def test_the_key_is_declared_as_a_default(self):
+        assert DEFAULT_CONFIG[CONFIG_KEY] == []
+
+    def test_workspaces_survive_a_save_and_load(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(settings, "_config_path", lambda: tmp_path / "config.json")
+        monkeypatch.setattr(settings, "_config_dir", lambda: tmp_path)
+        cfg = settings.load()
+        cfg[CONFIG_KEY] = dump_workspaces([_ws()])
+        settings.save(cfg, keyring=_NoKeyring())
+        assert load_workspaces(settings.load(keyring=_NoKeyring())) == [_ws()]
+
+
+class _NoKeyring:
+    def available(self):
+        return False
+
+    def get(self):
+        return None
+
+    def set(self, value):
+        return False
+
+    def delete(self):
+        return False

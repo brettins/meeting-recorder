@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Meeting Recorder
+Name=Brett's Meeting Recorder
 Comment=Record, transcribe and summarize meetings
 Exec=/usr/bin/meeting-recorder
 Icon=meeting-recorder

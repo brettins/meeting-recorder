@@ -34,6 +34,7 @@ from meeting_recorder.config.tags import (
 from meeting_recorder.utils.filename import output_paths
 from meeting_recorder.utils.meeting_scanner import Meeting, find_audio_file
 
+from ..config.defaults import APP_NAME
 from ..core import row_model as rm
 from ..core.controls import (
     CANCEL,
@@ -80,7 +81,7 @@ def _icon_label_button(icon_name: str, label: str) -> Gtk.Button:
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, engine, **kwargs) -> None:
-        super().__init__(title="Meeting Recorder", **kwargs)
+        super().__init__(title=APP_NAME, **kwargs)
         self.set_default_size(1100, 760)
         self.set_resizable(True)
 
@@ -575,7 +576,7 @@ class MainWindow(Adw.ApplicationWindow):
         if error_presentation(msg) == "dialog":
             alert = Gtk.AlertDialog()
             alert.set_modal(True)
-            alert.set_message("Meeting Recorder")
+            alert.set_message(APP_NAME)
             alert.set_detail(msg)
             alert.set_buttons(["OK"])
             alert.show(self)
@@ -592,7 +593,7 @@ class MainWindow(Adw.ApplicationWindow):
         """The header-bar gear: a menu with Preferences (settings) and About."""
         menu = Gio.Menu()
         menu.append("Preferences", "gear.preferences")
-        menu.append("About Meeting Recorder", "gear.about")
+        menu.append(f"About {APP_NAME}", "gear.about")
 
         actions = Gio.SimpleActionGroup()
         preferences = Gio.SimpleAction.new("preferences", None)

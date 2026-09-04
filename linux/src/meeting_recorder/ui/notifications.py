@@ -8,13 +8,15 @@ from __future__ import annotations
 import logging
 import subprocess
 
+from ..config.defaults import APP_NAME
+
 logger = logging.getLogger(__name__)
 
 
 def notify(
     summary: str,
     body: str = "",
-    app_name: str = "Meeting Recorder",
+    app_name: str = APP_NAME,
     icon: str = "meeting-recorder",
 ) -> None:
     """Send a desktop notification using notify-send (libnotify)."""
