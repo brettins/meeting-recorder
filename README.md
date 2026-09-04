@@ -93,6 +93,12 @@ button.
 
 ### Installation
 
+> **Updating without a password.** A user-local install (Option 2 below) puts everything under
+> `$HOME`, so `linux/install.sh --skip-deps` replaces the app with no `sudo` at all — it skips the
+> three first-install steps that need root. Settings → General → Updates does exactly that from
+> inside the app, then offers to restart. A package install is owned by your package manager and
+> shows that instead of an Update button.
+
 #### Option 1: native package (recommended)
 
 Download the package for your distro from the [Releases](../../releases) page.
