@@ -20,7 +20,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_ATTRIBUTES = {"application": "meeting-recorder", "purpose": "gemini-api-key"}
+GEMINI_PURPOSE = "gemini-api-key"
+
+_ATTRIBUTES = {"application": "meeting-recorder", "purpose": GEMINI_PURPOSE}
 _LABEL = "Meeting Recorder — Gemini API key"
 
 _UNSET = object()
@@ -57,6 +59,8 @@ class KeyringStore:
         secretstorage_module: Any = _UNSET,
         env: dict[str, str] | None = None,
         account_home: Any = _UNSET,
+        purpose: str = GEMINI_PURPOSE,
+        label: str | None = None,
     ) -> None:
         if secretstorage_module is _UNSET:
             try:
@@ -75,6 +79,8 @@ class KeyringStore:
             )
             secretstorage_module = None
         self._ss = secretstorage_module
+        self._attributes = dict(_ATTRIBUTES, purpose=purpose)
+        self._label = label or _LABEL
 
     # ------------------------------------------------------------------
 
@@ -106,7 +112,7 @@ class KeyringStore:
         try:
             conn, collection = self._open()
             try:
-                for item in collection.search_items(_ATTRIBUTES):
+                for item in collection.search_items(self._attributes):
                     secret = item.get_secret()
                     return bytes(secret).decode("utf-8")
                 return None
@@ -123,7 +129,9 @@ class KeyringStore:
         try:
             conn, collection = self._open()
             try:
-                collection.create_item(_LABEL, _ATTRIBUTES, value.encode("utf-8"), replace=True)
+                collection.create_item(
+                    self._label, self._attributes, value.encode("utf-8"), replace=True
+                )
                 return True
             finally:
                 conn.close()
@@ -138,7 +146,7 @@ class KeyringStore:
         try:
             conn, collection = self._open()
             try:
-                for item in collection.search_items(_ATTRIBUTES):
+                for item in collection.search_items(self._attributes):
                     item.delete()
                 return True
             finally:
