@@ -19,6 +19,7 @@ import shutil
 from pathlib import Path
 
 from meeting_recorder.config.defaults import APP_ID
+from meeting_recorder.config.defaults import APP_NAME as DISPLAY_NAME
 from meeting_recorder.core.run_mode import DAEMON_FLAG
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ DESKTOP_TEMPLATE = """\
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Meeting Recorder
+Name={app_name}
 Comment=Record, transcribe and summarize meetings
 Exec={exec_path} {daemon_flag}
 Icon=meeting-recorder
@@ -136,7 +137,10 @@ def update_autostart(enabled: bool) -> None:
         try:
             autostart_file.write_text(
                 DESKTOP_TEMPLATE.format(
-                    exec_path=_find_exec(), daemon_flag=DAEMON_FLAG, app_id=APP_ID
+                    exec_path=_find_exec(),
+                    daemon_flag=DAEMON_FLAG,
+                    app_id=APP_ID,
+                    app_name=DISPLAY_NAME,
                 )
             )
             logger.info("Enabled autostart: wrote %s", autostart_file)

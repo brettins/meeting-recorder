@@ -25,6 +25,7 @@ import gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, Gio, GLib
 
+from ..config.defaults import APP_NAME
 from .tray_model import assign_menu_ids, build_menu_model, icon_for_state
 
 logger = logging.getLogger(__name__)
@@ -357,7 +358,7 @@ class TrayIcon:
         values = {
             "Category": GLib.Variant("s", "ApplicationStatus"),
             "Id": GLib.Variant("s", "meeting-recorder"),
-            "Title": GLib.Variant("s", "Meeting Recorder"),
+            "Title": GLib.Variant("s", APP_NAME),
             "Status": GLib.Variant("s", "Active"),
             "WindowId": GLib.Variant("u", 0),
             "IconName": GLib.Variant("s", "" if pixmaps else self._icon_name),
@@ -365,7 +366,7 @@ class TrayIcon:
             "IconThemePath": GLib.Variant("s", ""),
             "ItemIsMenu": GLib.Variant("b", False),
             "Menu": GLib.Variant("o", _MENU_PATH),
-            "ToolTip": GLib.Variant("(sa(iiay)ss)", ("", [], "Meeting Recorder", "")),
+            "ToolTip": GLib.Variant("(sa(iiay)ss)", ("", [], APP_NAME, "")),
         }
         return values.get(prop)
 

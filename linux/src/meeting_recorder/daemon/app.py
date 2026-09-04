@@ -14,6 +14,7 @@ import signal
 from gi.repository import GLib
 
 from ..config import settings
+from ..config.defaults import APP_NAME
 from ..core import commands
 from ..core.task_runner import TaskRunner
 from ..utils.autostart import migrate_autostart_entry
@@ -193,7 +194,7 @@ class Daemon:
 
         notify(
             summary="Call Detected",
-            body="A call may have started. Open Meeting Recorder to start recording.",
+            body=f"A call may have started. Open {APP_NAME} to start recording.",
         )
 
 

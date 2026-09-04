@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 APP_ID = "io.github.dipakmdhrm.MeetingRecorder"
-APP_NAME = "Meeting Recorder"
+APP_NAME = "Brett's Meeting Recorder"
 CONFIG_DIR = "~/.config/meeting-recorder"
 CONFIG_FILE = "~/.config/meeting-recorder/config.json"
 DEFAULT_OUTPUT_FOLDER = "~/meetings"
