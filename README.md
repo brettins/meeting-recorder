@@ -65,6 +65,37 @@ The base install is **Gemini-only and minimal** — no local engines or GPU libr
 
 > Your API key is stored in the system keyring (GNOME Keyring / KWallet) when one is available, falling back to a permission-restricted config file otherwise.
 
+### Recording limits
+
+A recording nobody stops runs until the disk does, so two guards sit in
+**Settings → General → Recording limits**:
+
+- **Maximum recording length** (default 3 hours) stops the recording outright.
+- **Stop when nothing is heard** watches the recorded audio and escalates: after an hour of
+  recording, a notification at 10 minutes of silence, a warning 5 minutes before the end, and a
+  stop at 30 minutes. Any sound resets it, so a meeting that goes quiet and picks up again is
+  never cut short.
+
+Silence means the microphone and the system audio are *both* quiet, so a video or music playing
+keeps the recording alive. Set either limit to 0 to turn it off.
+
+### Silence is stripped before transcription
+
+Long pauses cost upload time and model budget for nothing, so a trimmed copy is what gets sent —
+your recording is never modified. A real example: an 18-minute standup was sent as 10 minutes.
+
+Turn it off with **Remove silence before transcribing** in Settings → General.
+
+### Splitting a long recording
+
+A recorder left running overnight ends up holding several meetings with dead hours between
+them. The scissors icon on any meeting with audio reads the recording, reports what it found —
+how many meetings, how long each one is, how much audio would actually be transcribed — and
+lets you split it into separate meetings or keep it as one and process it as is.
+
+A gap has to be at least 30 minutes to count as a seam, so a meeting that merely went quiet is
+never broken up. The original recording is always kept.
+
 ### Filing meetings into Notion
 
 A finished meeting can be pushed onto a page in a Notion meetings database: the notes become

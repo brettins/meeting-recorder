@@ -122,9 +122,77 @@ class GeneralPage:
         recording.add(self._folder_entry)
         box.append(recording)
 
+        box.append(self._build_limits())
         box.append(self._build_updates())
 
         return scroll
+
+    # ------------------------------------------------------------------
+    # Limits
+    # ------------------------------------------------------------------
+
+    def _build_limits(self) -> Adw.PreferencesGroup:
+        """Two guards against a recording nobody stops.
+
+        The cap is separate from the silence ladder because they fail
+        differently: the cap cannot be fooled but will cut a genuinely long
+        meeting, while silence is kinder but can be held open by music playing
+        through the speakers. Both are adjustable, and 0 turns either off.
+        """
+        group = Adw.PreferencesGroup(
+            title="Recording limits",
+            description=(
+                "A recording nobody stops runs until the disk does. The length cap "
+                "always stops; silence nudges and warns first. Set either to 0 to "
+                "turn it off."
+            ),
+        )
+
+        self._max_minutes = Adw.SpinRow.new_with_range(0, 24 * 60, 15)
+        self._max_minutes.set_title("Maximum recording length")
+        self._max_minutes.set_subtitle("Minutes. Stops the recording outright.")
+        self._max_minutes.set_value(self._cfg.get("max_recording_minutes", 180))
+        group.add(self._max_minutes)
+
+        self._silence_switch = Adw.SwitchRow(
+            title="Stop when nothing is heard",
+            subtitle=(
+                "Watches the recorded audio — microphone and system sound together — "
+                "so a video or music playing keeps the recording alive."
+            ),
+        )
+        self._silence_switch.set_active(self._cfg.get("silence_auto_stop_enabled", True))
+        group.add(self._silence_switch)
+
+        self._silence_grace = Adw.SpinRow.new_with_range(0, 8 * 60, 15)
+        self._silence_grace.set_title("Ignore silence for the first")
+        self._silence_grace.set_subtitle("Minutes. Nothing is said or stopped before this.")
+        self._silence_grace.set_value(self._cfg.get("silence_grace_minutes", 60))
+        group.add(self._silence_grace)
+
+        self._silence_nudge = Adw.SpinRow.new_with_range(1, 120, 5)
+        self._silence_nudge.set_title("Notify after silence of")
+        self._silence_nudge.set_subtitle("Minutes. A reminder that the recorder is running.")
+        self._silence_nudge.set_value(self._cfg.get("silence_nudge_minutes", 10))
+        group.add(self._silence_nudge)
+
+        self._trim_switch = Adw.SwitchRow(
+            title="Remove silence before transcribing",
+            subtitle=(
+                "Sends a trimmed copy so long gaps do not cost upload time or model "
+                "budget. The recording in your library is never modified."
+            ),
+        )
+        self._trim_switch.set_active(self._cfg.get("trim_silence_before_upload", True))
+        group.add(self._trim_switch)
+
+        self._silence_stop = Adw.SpinRow.new_with_range(0, 240, 5)
+        self._silence_stop.set_title("Stop after silence of")
+        self._silence_stop.set_subtitle("Minutes. A warning arrives five minutes before.")
+        self._silence_stop.set_value(self._cfg.get("silence_stop_minutes", 30))
+        group.add(self._silence_stop)
+
+        return group
 
     # ------------------------------------------------------------------
     # Updates
@@ -253,3 +321,9 @@ class GeneralPage:
         cfg["start_at_startup"] = self._startup_switch.get_active()
         cfg["auto_title"] = self._auto_title_switch.get_active()
         cfg["processing_countdown_enabled"] = self._countdown_switch.get_active()
+        cfg["max_recording_minutes"] = int(self._max_minutes.get_value())
+        cfg["silence_auto_stop_enabled"] = self._silence_switch.get_active()
+        cfg["silence_grace_minutes"] = int(self._silence_grace.get_value())
+        cfg["silence_nudge_minutes"] = int(self._silence_nudge.get_value())
+        cfg["silence_stop_minutes"] = int(self._silence_stop.get_value())
+        cfg["trim_silence_before_upload"] = self._trim_switch.get_active()

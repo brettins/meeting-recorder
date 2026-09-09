@@ -404,3 +404,46 @@ def test_a_blank_status_mid_recording_keeps_the_previous_one(engine, monkeypatch
     engine._on_state(State.RECORDING, "")
 
     assert json.loads(engine.snapshot_json())["status"] == before
+
+
+class TestAutoStopNotices:
+    """The engine's half of the auto-stop ladder: notify, and stop on STOP.
+
+    The controller reports from a recorder worker thread; the engine is what
+    turns that into a desktop notification and, for a stop, the lifecycle call
+    that only the main thread may make.
+    """
+
+    @staticmethod
+    def _notified(monkeypatch):
+        sent = []
+        monkeypatch.setattr(
+            "meeting_recorder.ui.notifications.notify",
+            lambda summary="", body="", **kw: sent.append((summary, body)),
+        )
+        return sent
+
+    def test_a_nudge_notifies_without_stopping(self, engine, monkeypatch):
+        sent = self._notified(monkeypatch)
+        engine._apply_auto_notice("nudge", "Nobody has spoken for 10 minutes.")
+        assert sent == [("Still recording", "Nobody has spoken for 10 minutes.")]
+        assert engine._test["ctrl"]["ctrl"].calls == []
+
+    def test_a_warning_notifies_without_stopping(self, engine, monkeypatch):
+        sent = self._notified(monkeypatch)
+        engine._apply_auto_notice("warn", "Recording will stop in about 5 minutes.")
+        assert sent[0][0] == "Still recording"
+        assert engine._test["ctrl"]["ctrl"].calls == []
+
+    def test_a_stop_notifies_and_stops(self, engine, monkeypatch):
+        sent = self._notified(monkeypatch)
+        engine._apply_auto_notice("stop", "No sound for 30 minutes.")
+        assert sent[0][0] == "Recording stopped"
+        assert engine._test["ctrl"]["ctrl"].calls == [("stop", False)]
+
+    def test_an_automatic_stop_skips_the_countdown(self, engine, monkeypatch):
+        # The countdown exists so someone at the machine can cancel; an
+        # automatic stop happens precisely because nobody is there.
+        self._notified(monkeypatch)
+        engine._apply_auto_notice("stop", "No sound for 30 minutes.")
+        assert engine._test["ctrl"]["ctrl"].calls[0][1] is False

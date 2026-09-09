@@ -73,6 +73,7 @@ class Pipeline:
         from .providers.ollama import unload_all_models
         from .summarization import create_summarization_provider
         from .transcription import create_transcription_provider
+        from .upload_audio import prepare_for_upload
 
         # Fail fast with a clear message instead of a confusing error deep
         # inside a provider (e.g. the Gemini upload opening a None path).
@@ -99,12 +100,17 @@ class Pipeline:
                     self._on_status("Freeing GPU memory (unloading ollama models)…")
                 unload_all_models(ollama_host)
 
-        # Transcription
+        # Transcription. Dead air is stripped from a temporary copy first; the
+        # recording in the library is never modified.
+        prepared = prepare_for_upload(audio_path, self._config, on_status=self._on_status)
         ts_provider = create_transcription_provider(self._config)
-        transcript = ts_provider.transcribe(
-            audio_path=audio_path,
-            on_status=self._on_status,
-        )
+        try:
+            transcript = ts_provider.transcribe(
+                audio_path=prepared.path,
+                on_status=self._on_status,
+            )
+        finally:
+            prepared.cleanup()
 
         # Free transcription model from memory before loading summarization model.
         self._maybe_unload(ts_provider, "transcription")

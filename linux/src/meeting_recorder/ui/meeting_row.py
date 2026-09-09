@@ -38,12 +38,13 @@ from ..core.row_model import (
     RENAME,
     RETRY,
     ROW_STATE_CSS,
+    SPLIT,
     SUMMARIZE,
     TAG,
     RowModel,
 )
 from ..utils.gtk_compat import remove_all_children
-from .icons import notion_icon, tag_icon
+from .icons import notion_icon, split_icon, tag_icon
 from .tag_widgets import make_tag_chip
 
 # id -> (kind, icon-or-label, tooltip). "icon" buttons are the quiet per-meeting
@@ -213,7 +214,11 @@ class MeetingRow(Gtk.ListBoxRow):
     def _rebuild_actions(self, model: RowModel) -> None:
         remove_all_children(self._actions)
         for action in model.actions:
-            if action == FILE_TO_NOTION:
+            if action == SPLIT:
+                btn = Gtk.Button(icon_name=split_icon())
+                btn.set_tooltip_text("Check for long gaps and split into separate meetings")
+                btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
+            elif action == FILE_TO_NOTION:
                 btn = Gtk.Button(icon_name=notion_icon())
                 btn.set_tooltip_text("File this meeting into Notion")
                 btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))

@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 # Best-first candidates. The final entry is the guaranteed fallback.
 TAG_ICONS = ("tag-symbolic", "bookmark-new-symbolic", "user-bookmarks-symbolic")
 TAG_LIST_ICONS = ("view-list-symbolic", "view-list-bullet-symbolic")
+SPLIT_ICONS = ("edit-cut-symbolic", "object-flip-vertical-symbolic", "view-list-symbolic")
 NOTION_ICONS = ("send-to-symbolic", "document-send-symbolic", "document-save-symbolic")
 
 

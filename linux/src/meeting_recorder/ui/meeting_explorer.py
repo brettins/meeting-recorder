@@ -10,10 +10,12 @@ are joined by ``core/row_model.py``.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 import gi
 
@@ -53,6 +55,7 @@ from ..utils.glib_bridge import idle_call
 from .icons import tag_list_icon
 from .meeting_row import MeetingRow, RowListView
 from .notion_dialog import NotionFileDialog
+from .split_dialog import SplitDialog
 from .tag_widgets import TagAssignPopover, TagManageDialog
 
 logger = logging.getLogger(__name__)
@@ -259,6 +262,8 @@ class MeetingExplorer(Gtk.Box):
             self._start_inline_edit(row)
         elif action == rm.AI_TITLE and row is not None:
             self._on_ai_title_clicked(row, meeting)
+        elif action == rm.SPLIT:
+            self._open_split_dialog(meeting)
         elif action == rm.FILE_TO_NOTION:
             self._open_notion_dialog(meeting)
         elif action == rm.SUMMARIZE:
@@ -417,6 +422,38 @@ class MeetingExplorer(Gtk.Box):
         self._error_label.remove_css_class("error")
         self._error_label.set_text(message)
         self._error_label.set_visible(True)
+
+    def _open_split_dialog(self, meeting: Meeting) -> None:
+        window = self.get_root()
+        output_folder = Path(os.path.expanduser(settings.load().get("output_folder", "~/meetings")))
+        dialog = SplitDialog(
+            window if isinstance(window, Gtk.Window) else None,
+            meeting,
+            output_folder=output_folder,
+            on_split=self._after_split,
+            on_keep=lambda: self._on_summarize_callback and self._on_summarize_callback(meeting),
+        )
+        dialog.present()
+
+    def _after_split(self, folders: list) -> None:
+        """Show the new meetings and offer them for processing.
+
+        The parts are queued rather than left sitting: splitting is something
+        someone does *in order* to get transcripts, so making them click each
+        one would just be the same decision asked again.
+        """
+        self.refresh()
+        if not self._on_summarize_callback:
+            self._show_notice(f"Split into {len(folders)} meetings.")
+            return
+        by_key = {str(m.path): m for m in self._all_meetings}
+        queued = 0
+        for folder in folders:
+            meeting = by_key.get(str(folder))
+            if meeting is not None:
+                self._on_summarize_callback(meeting)
+                queued += 1
+        self._show_notice(f"Split into {len(folders)} meetings; {queued} sent for processing.")
 
     def _open_notion_dialog(self, meeting: Meeting) -> None:
         if not self._notion_workspaces:
