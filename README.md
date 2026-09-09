@@ -65,6 +65,20 @@ The base install is **Gemini-only and minimal** — no local engines or GPU libr
 
 > Your API key is stored in the system keyring (GNOME Keyring / KWallet) when one is available, falling back to a permission-restricted config file otherwise.
 
+### Recording limits
+
+A recording nobody stops runs until the disk does, so two guards sit in
+**Settings → General → Recording limits**:
+
+- **Maximum recording length** (default 3 hours) stops the recording outright.
+- **Stop when nothing is heard** watches the recorded audio and escalates: after an hour of
+  recording, a notification at 10 minutes of silence, a warning 5 minutes before the end, and a
+  stop at 30 minutes. Any sound resets it, so a meeting that goes quiet and picks up again is
+  never cut short.
+
+Silence means the microphone and the system audio are *both* quiet, so a video or music playing
+keeps the recording alive. Set either limit to 0 to turn it off.
+
 ### Filing meetings into Notion
 
 A finished meeting can be pushed onto a page in a Notion meetings database: the notes become

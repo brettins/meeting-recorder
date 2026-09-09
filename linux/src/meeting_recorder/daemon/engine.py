@@ -96,6 +96,7 @@ class Engine:
             on_countdown=self._on_countdown_tick,
             on_timer=self._on_tick,
             on_recorder_error=self._on_recording_error,
+            on_auto_notice=self._on_auto_notice,
         )
         self._job_manager = job_manager or JobManager()
 
@@ -428,6 +429,23 @@ class Engine:
             if j.job_id == job_id:
                 return j
         return None
+
+    def _on_auto_notice(self, action: str, message: str) -> None:
+        """Handle the auto-stop ladder. Arrives on a recorder worker thread."""
+        idle_call(self._apply_auto_notice, action, message)
+
+    def _apply_auto_notice(self, action: str, message: str) -> None:
+        from ..core.auto_stop import STOP
+        from ..ui.notifications import notify
+
+        summary = "Recording stopped" if action == STOP else "Still recording"
+        notify(summary=summary, body=message)
+        logger.info("Auto-stop %s: %s", action, message)
+        if action == STOP:
+            # No countdown: its whole purpose is to give someone at the machine
+            # a chance to cancel, and an automatic stop happens because nobody
+            # is there.
+            self._controller.stop(False)
 
     def _notify_complete(self, job: Job) -> None:
         from ..ui.notifications import notify

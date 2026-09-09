@@ -10,6 +10,7 @@ import json
 import time
 from pathlib import Path
 
+from meeting_recorder.core import auto_stop
 from meeting_recorder.core.recording_controller import (
     PendingRecording,
     RecordingController,
@@ -67,6 +68,8 @@ class Harness:
         self.saved: list[PendingRecording] = []
         self.discarded: list[bool] = []
         self.countdowns: list[int] = []
+        self.notices: list[tuple[str, str]] = []
+        self.ticks: list[int] = []
         self.tmp_path = tmp_path
 
         self.runner = TaskRunner(schedule_on_main=lambda cb: cb())
@@ -78,18 +81,31 @@ class Harness:
             on_saved=self.saved.append,
             on_discarded=lambda: self.discarded.append(True),
             on_countdown=self.countdowns.append,
-            on_timer=lambda _s: None,
+            on_timer=self.ticks.append,
             on_recorder_error=lambda _m: None,
+            on_auto_notice=lambda a, m: self.notices.append((a, m)),
             recorder_factory=lambda **kw: self.recorder,
             validate_devices_fn=lambda: (devices_ok, "" if devices_ok else "no mic"),
             schedule_tick=self.ticker,
         )
 
-    def cfg(self):
-        return {"output_folder": str(self.tmp_path), "recording_quality": "high"}
+    def cfg(self, **overrides):
+        base = {"output_folder": str(self.tmp_path), "recording_quality": "high"}
+        base.update(overrides)
+        return base
+
+    def start_with(self, **overrides):
+        self.controller.start(self.cfg(**overrides), "headphones", None, None)
 
     def start(self, mode="headphones", title=None, tags=None):
         self.controller.start(self.cfg(), mode, title, tags)
+
+    def tick(self, seconds):
+        """Pump one elapsed-second callback, as the recorder thread would."""
+        self.controller._on_tick(seconds)
+
+    def silence(self, silent):
+        self.controller._on_silence(silent)
 
     def wait_recorder_stopped(self, timeout=2.0):
         deadline = time.monotonic() + timeout
@@ -422,3 +438,103 @@ class TestLiveTitleAndTags:
         h.drain()
 
         assert not meeting_dir.exists()
+
+
+class TestAutoStopLadder:
+    """The controller's half of the ladder: bookkeeping and reporting.
+
+    The thresholds themselves are core/auto_stop.py's; these cover the wiring —
+    that ticks are still forwarded, that silence timing survives ffmpeg's
+    reporting delay, and that a stop is only ever *reported*, never carried out
+    on the recorder thread.
+    """
+
+    def test_ticks_are_still_forwarded_to_the_timer(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.tick(1)
+        h.tick(2)
+        assert h.ticks == [1, 2]
+
+    def test_a_quiet_recording_under_the_cap_says_nothing(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.silence(True)
+        h.tick(60)
+        assert h.notices == []
+
+    def test_the_cap_reports_a_stop(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start_with(max_recording_minutes=1)
+        h.tick(60)
+        assert [a for a, _ in h.notices] == ["stop"]
+
+    def test_the_cap_is_not_reported_twice(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start_with(max_recording_minutes=1)
+        h.tick(60)
+        h.tick(61)
+        assert len(h.notices) == 1
+
+    def test_the_controller_does_not_stop_the_recorder_itself(self, tmp_path):
+        # The stop is carried out by whoever owns the main thread; doing it
+        # here would mutate lifecycle state from a recorder worker thread.
+        h = Harness(tmp_path=tmp_path)
+        h.start_with(max_recording_minutes=1)
+        h.tick(60)
+        assert h.recorder.stopped is False
+
+    def test_silence_escalates_through_the_ladder(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start_with(
+            max_recording_minutes=0,
+            silence_grace_minutes=0,
+            silence_nudge_minutes=1,
+            silence_stop_minutes=3,
+            silence_warn_lead_minutes=1,
+        )
+        h.controller._silent_since = time.monotonic() - 60
+        h.tick(60)
+        h.controller._silent_since = time.monotonic() - 120
+        h.tick(120)
+        h.controller._silent_since = time.monotonic() - 180
+        h.tick(180)
+        assert [a for a, _ in h.notices] == ["nudge", "warn", "stop"]
+
+    def test_sound_resets_the_ladder(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start_with(max_recording_minutes=0, silence_grace_minutes=0, silence_nudge_minutes=1)
+        h.controller._silent_since = time.monotonic() - 60
+        h.tick(60)
+        assert len(h.notices) == 1
+        h.silence(False)
+        h.controller._silent_since = time.monotonic() - 60
+        h.tick(120)
+        assert len(h.notices) == 2
+
+    def test_silence_timing_credits_the_detection_delay(self, tmp_path):
+        # ffmpeg only reports a quiet stretch once it has already lasted the
+        # detection window, so the clock must start that far back.
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.silence(True)
+        assert h.controller._silence_seconds() >= auto_stop.SILENCE_DETECT_SECONDS
+
+    def test_sound_clears_the_silence_clock(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.silence(True)
+        h.silence(False)
+        assert h.controller._silence_seconds() == 0
+
+    def test_a_repeated_silence_start_does_not_restart_the_clock(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start()
+        h.controller._silent_since = time.monotonic() - 600
+        h.silence(True)
+        assert h.controller._silence_seconds() >= 600
+
+    def test_settings_are_read_at_start(self, tmp_path):
+        h = Harness(tmp_path=tmp_path)
+        h.start_with(max_recording_minutes=42)
+        assert h.controller._auto_cfg.max_minutes == 42

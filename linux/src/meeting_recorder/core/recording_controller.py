@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import Any
 from ..config.defaults import RECORDING_QUALITIES
 from ..utils.filename import output_paths
 from ..utils.meeting_scanner import set_meeting_tags, write_metadata
+from . import auto_stop
 from .recording_rename import apply_rename
 from .state_machine import State, can_transition
 from .task_runner import TaskRunner
@@ -88,6 +90,7 @@ class RecordingController:
         on_countdown: Callable[[int], None],
         on_timer: Callable[[int], None],
         on_recorder_error: Callable[[str], None],
+        on_auto_notice: Callable[[str, str], None] | None = None,
         recorder_factory: Callable[..., Any] | None = None,
         validate_devices_fn: Callable[[], tuple[bool, str]] | None = None,
         schedule_tick: Callable[[int, Callable[[], bool]], None] | None = None,
@@ -101,6 +104,9 @@ class RecordingController:
         self._on_countdown = on_countdown
         self._on_timer = on_timer
         self._on_recorder_error = on_recorder_error
+        # (action, message) for the auto-stop ladder: a nudge, a "stopping
+        # soon" warning, or the sentence shown when it stops by itself.
+        self._on_auto_notice = on_auto_notice
         self._recorder_factory = recorder_factory or _default_recorder_factory
         self._validate_devices = validate_devices_fn or _default_validate_devices
         self._schedule_tick = schedule_tick or _glib_schedule_tick
@@ -115,6 +121,12 @@ class RecordingController:
         # taken by the engine after wait_until_stopped() so the job adopts the
         # folder's final paths.
         self._final: PendingRecording | None = None
+
+        # Auto-stop bookkeeping. _silent_since is the monotonic time the
+        # current quiet stretch began, or None while there is sound.
+        self._auto_cfg = auto_stop.AutoStopConfig()
+        self._silent_since: float | None = None
+        self._announced_stage = auto_stop.STAGE_NOTHING
 
     # ------------------------------------------------------------------
 
@@ -163,6 +175,10 @@ class RecordingController:
         )
         self._final = None
 
+        self._auto_cfg = auto_stop.config_from(cfg)
+        self._silent_since = None
+        self._announced_stage = auto_stop.STAGE_NOTHING
+
         q_key = cfg.get("recording_quality", "high")
         _, q_val = RECORDING_QUALITIES.get(q_key, RECORDING_QUALITIES["high"])
 
@@ -170,8 +186,9 @@ class RecordingController:
             output_path=audio,
             mode=mode,
             quality=q_val,
-            on_tick=self._on_timer,
+            on_tick=self._on_tick,
             on_error=self._on_recorder_error,
+            on_silence=self._on_silence,
         )
         try:
             recorder.start()
@@ -183,6 +200,49 @@ class RecordingController:
 
         mode_label = "headphones" if mode == "headphones" else "speaker"
         self._set_state(State.RECORDING, f"Recording… ({mode_label} mode)")
+
+    # ------------------------------------------------------------------
+    # Auto-stop ladder
+    # ------------------------------------------------------------------
+
+    def _on_tick(self, seconds: int) -> None:
+        """Forward the elapsed second, then run the auto-stop ladder.
+
+        Called on a recorder worker thread, like on_recorder_error, so it only
+        *reports*: a stop is carried out by whoever owns the main thread, which
+        is the same contract on_timer already has.
+        """
+        self._on_timer(seconds)
+        decision = auto_stop.decide(
+            seconds,
+            self._silence_seconds(),
+            self._auto_cfg,
+            announced_stage=self._announced_stage,
+        )
+        if decision.action == auto_stop.NONE:
+            return
+        self._announced_stage = max(self._announced_stage, decision.stage)
+        if self._on_auto_notice:
+            self._on_auto_notice(decision.action, decision.message)
+
+    def _on_silence(self, silent: bool) -> None:
+        """Record that a quiet stretch began or ended.
+
+        ffmpeg only reports a stretch once it has already lasted the filter's
+        detection window, so that window is added back — otherwise every
+        threshold would be reached late by exactly that much.
+        """
+        if silent:
+            if self._silent_since is None:
+                self._silent_since = time.monotonic() - auto_stop.SILENCE_DETECT_SECONDS
+        else:
+            self._silent_since = None
+            self._announced_stage = auto_stop.STAGE_NOTHING
+
+    def _silence_seconds(self) -> int:
+        if self._silent_since is None:
+            return 0
+        return max(int(time.monotonic() - self._silent_since), 0)
 
     def set_title(self, title: str | None) -> None:
         """Retitle the running recording; the folder rename waits until stop.
