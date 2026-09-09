@@ -79,6 +79,13 @@ A recording nobody stops runs until the disk does, so two guards sit in
 Silence means the microphone and the system audio are *both* quiet, so a video or music playing
 keeps the recording alive. Set either limit to 0 to turn it off.
 
+### Silence is stripped before transcription
+
+Long pauses cost upload time and model budget for nothing, so a trimmed copy is what gets sent —
+your recording is never modified. A real example: an 18-minute standup was sent as 10 minutes.
+
+Turn it off with **Remove silence before transcribing** in Settings → General.
+
 ### Splitting a long recording
 
 A recorder left running overnight ends up holding several meetings with dead hours between

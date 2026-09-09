@@ -192,6 +192,20 @@ def describe_plan(
     )
 
 
+def build_probe_command(path: Path | str) -> list[str]:
+    """ffprobe invocation that reports one number: the file's length."""
+    return [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(path),
+    ]
+
+
 def build_extract_command(source: Path | str, part: Part, destination: Path | str) -> list[str]:
     """Copy one span out of the recording without re-encoding it.
 

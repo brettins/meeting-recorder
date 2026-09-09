@@ -176,6 +176,16 @@ class GeneralPage:
         self._silence_nudge.set_value(self._cfg.get("silence_nudge_minutes", 10))
         group.add(self._silence_nudge)
 
+        self._trim_switch = Adw.SwitchRow(
+            title="Remove silence before transcribing",
+            subtitle=(
+                "Sends a trimmed copy so long gaps do not cost upload time or model "
+                "budget. The recording in your library is never modified."
+            ),
+        )
+        self._trim_switch.set_active(self._cfg.get("trim_silence_before_upload", True))
+        group.add(self._trim_switch)
+
         self._silence_stop = Adw.SpinRow.new_with_range(0, 240, 5)
         self._silence_stop.set_title("Stop after silence of")
         self._silence_stop.set_subtitle("Minutes. A warning arrives five minutes before.")
@@ -316,3 +326,4 @@ class GeneralPage:
         cfg["silence_grace_minutes"] = int(self._silence_grace.get_value())
         cfg["silence_nudge_minutes"] = int(self._silence_nudge.get_value())
         cfg["silence_stop_minutes"] = int(self._silence_stop.get_value())
+        cfg["trim_silence_before_upload"] = self._trim_switch.get_active()

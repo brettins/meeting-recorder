@@ -130,6 +130,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "silence_nudge_minutes": 10,
     "silence_stop_minutes": 30,
     "silence_warn_lead_minutes": 5,
+    # Strip long silences from a temporary copy before transcribing. The
+    # recording in the library is never modified. 0 minutes = always trim.
+    "trim_silence_before_upload": True,
+    "trim_min_saving_minutes": 5,
     # When True the window process exits on close (idle-in-tray ~20 MB) and the
     # daemon respawns a fresh window on demand, costing a cold-start delay on
     # every reopen. Default off keeps the window resident (hidden) on close so
