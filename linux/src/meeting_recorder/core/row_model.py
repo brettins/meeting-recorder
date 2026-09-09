@@ -31,6 +31,7 @@ DETAILS = "details"
 AI_TITLE = "ai_title"
 SUMMARIZE = "summarize"
 FILE_TO_NOTION = "file_to_notion"
+SPLIT = "split"
 TAG = "tag"
 RENAME = "rename"
 OPEN_FOLDER = "open_folder"
@@ -101,7 +102,8 @@ def meeting_actions(
     and while the meeting is still unnamed; "Transcribe" only when there is
     audio and nothing has been made of it yet. "File to Notion" needs both a
     configured workspace and something written to file — audio on its own has
-    no page worth making.
+    no page worth making. "Split" needs only audio: a recording left running
+    overnight can hold several meetings whether or not it has been transcribed.
     """
     actions: list[str] = []
     if has_notes and not has_title:
@@ -110,6 +112,8 @@ def meeting_actions(
         actions.append(SUMMARIZE)
     if can_file_to_notion and (has_notes or has_transcript):
         actions.append(FILE_TO_NOTION)
+    if has_audio:
+        actions.append(SPLIT)
     actions.extend((TAG, RENAME, OPEN_FOLDER, DELETE))
     return tuple(actions)
 

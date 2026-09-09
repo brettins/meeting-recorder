@@ -79,6 +79,16 @@ A recording nobody stops runs until the disk does, so two guards sit in
 Silence means the microphone and the system audio are *both* quiet, so a video or music playing
 keeps the recording alive. Set either limit to 0 to turn it off.
 
+### Splitting a long recording
+
+A recorder left running overnight ends up holding several meetings with dead hours between
+them. The scissors icon on any meeting with audio reads the recording, reports what it found —
+how many meetings, how long each one is, how much audio would actually be transcribed — and
+lets you split it into separate meetings or keep it as one and process it as is.
+
+A gap has to be at least 30 minutes to count as a seam, so a meeting that merely went quiet is
+never broken up. The original recording is always kept.
+
 ### Filing meetings into Notion
 
 A finished meeting can be pushed onto a page in a Notion meetings database: the notes become

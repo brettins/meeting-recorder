@@ -304,3 +304,44 @@ class TestNotionRowIntegration:
         meeting = make_meeting(has_notes=True, title="Marketing")
         row = rm.row_from_meeting(meeting, is_recording=True, can_file_to_notion=True)
         assert row.actions == ()
+
+
+class TestSplitAction:
+    def test_a_meeting_with_audio_can_be_split(self):
+        actions = rm.meeting_actions(
+            has_notes=False,
+            has_transcript=False,
+            has_audio=True,
+            has_title=False,
+            can_summarize=True,
+        )
+        assert rm.SPLIT in actions
+
+    def test_an_already_transcribed_meeting_can_still_be_split(self):
+        actions = rm.meeting_actions(
+            has_notes=True,
+            has_transcript=True,
+            has_audio=True,
+            has_title=True,
+            can_summarize=True,
+        )
+        assert rm.SPLIT in actions
+
+    def test_a_meeting_without_audio_cannot_be_split(self):
+        actions = rm.meeting_actions(
+            has_notes=True,
+            has_transcript=True,
+            has_audio=False,
+            has_title=True,
+            can_summarize=True,
+        )
+        assert rm.SPLIT not in actions
+
+    def test_a_recording_row_offers_no_split(self):
+        meeting = make_meeting(has_audio=True)
+        assert rm.row_from_meeting(meeting, is_recording=True).actions == ()
+
+    def test_a_processing_row_offers_no_split(self):
+        meeting = make_meeting(has_audio=True)
+        job = make_job(status=JobStatus.PROCESSING)
+        assert rm.SPLIT not in rm.row_from_meeting(meeting, job).actions
