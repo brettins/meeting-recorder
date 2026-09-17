@@ -193,7 +193,7 @@ class MainWindow(Adw.ApplicationWindow):
         # The same row widget the Library uses, filtered to what is in flight —
         # a recording being processed is a state of a meeting, not a second kind
         # of list (see ui/meeting_row.py).
-        self._progress_clamp, progress_list = section_group("In progress")
+        self._progress_clamp, progress_list = section_group("This session")
         self._progress_clamp.set_visible(False)
         self._progress = RowListView(progress_list, on_action=self._on_progress_action)
         vbox.append(self._progress_clamp)
@@ -269,22 +269,31 @@ class MainWindow(Adw.ApplicationWindow):
         self._sync_title_and_tags(snap)
 
     def _render_progress(self) -> None:
-        """The Record tab's "In progress" section: the in-flight rows only."""
-        models = [
-            rm.row_from_job(j)
-            for j in self._snapshot.jobs
-            if rm.state_for_job(j.status) != rm.READY
-        ]
+        """Everything this session recorded, finished ones included.
+
+        A meeting that vanished the moment it finished left the tab you were
+        watching it on with nothing to show for it. The Library has it, but
+        that is not where you were looking.
+        """
+        models = [rm.row_from_job(j) for j in self._snapshot.jobs]
         self._progress.render(models, self._tag_colors())
         self._progress_clamp.set_visible(bool(models))
 
     def _on_progress_action(self, action: str, model: rm.RowModel) -> None:
         if model.job_id is None:
             return
+        if action == rm.OPEN_FOLDER:
+            self._open_job_folder(model.job_id)
+            return
         if action == rm.DETAILS:
             self.show_error(model.error_msg or "No error message was recorded for this job.")
             return
         self._forward_job_action(action, model.job_id)
+
+    def _open_job_folder(self, job_id: int) -> None:
+        folder = self._engine.job_folder(job_id)
+        if folder:
+            Gtk.UriLauncher.new(Path(folder).as_uri()).launch(self, None, None, None)
 
     def _forward_job_action(self, action: str, job_id: int) -> None:
         if action == rm.CANCEL:
