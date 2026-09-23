@@ -10,6 +10,6 @@ import java.io.File
  * more operations.
  */
 interface MeetingStore {
-    /** Writes `meeting.json` in [dir]; null [title]/[durationSeconds] fields are omitted. */
+    /** Writes title and duration into `meeting.json` in [dir]; a null one is removed, other keys are kept. */
     fun saveMeetingMeta(dir: File, title: String?, durationSeconds: Int?)
 }

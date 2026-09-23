@@ -1,9 +1,6 @@
 package com.github.meetingrecorder.data
 
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.time.LocalDateTime
 
@@ -130,7 +127,13 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
     }
 
     override fun saveMeetingMeta(dir: File, title: String?, durationSeconds: Int?) {
-        File(dir, "meeting.json").writeText(MeetingMeta(title, durationSeconds).toJson())
+        updateMeetingJson(
+            dir,
+            mapOf(
+                "title" to title?.let { JsonPrimitive(it) },
+                "duration_seconds" to durationSeconds?.let { JsonPrimitive(it) },
+            ),
+        )
     }
 
     /**
@@ -149,22 +152,8 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
             dir.renameTo(newDir)
         }
 
-        // Update meeting.json — preserve any existing fields (e.g. duration_seconds, or keys
-        // written by the Linux app), which is why this edits the raw JSON tree, not MeetingMeta.
-        val metaFile = File(newDir, "meeting.json")
-        val existing: Map<String, JsonElement> = if (metaFile.exists()) {
-            try {
-                lenientJson.parseToJsonElement(metaFile.readText()).jsonObject
-            } catch (_: Exception) {
-                emptyMap()
-            }
-        } else {
-            emptyMap()
-        }
-        val updated = JsonObject(
-            if (cleanTitle != null) existing + ("title" to JsonPrimitive(cleanTitle)) else existing - "title",
-        )
-        metaFile.writeText(updated.toString())
+        // Edits the raw JSON tree, not MeetingMeta, so duration_seconds and Linux-written keys survive.
+        updateMeetingJson(newDir, mapOf("title" to cleanTitle?.let { JsonPrimitive(it) }))
 
         return newDir
     }

@@ -113,6 +113,19 @@ class MeetingRepositoryTest {
     }
 
     @Test
+    fun `saveMeetingMeta keeps keys it does not own`() {
+        val dir = tempDir.newFolder("2024-01-15_14-30")
+        File(dir, "meeting.json").writeText("""{"title":"Old","tags":["sing"],"dispatch_meeting_id":"2024-01-15T14:30"}""")
+        repo().saveMeetingMeta(dir, "New", 60)
+
+        val json = JSONObject(File(dir, "meeting.json").readText())
+        assertEquals("New", json.getString("title"))
+        assertEquals(60, json.getInt("duration_seconds"))
+        assertEquals("sing", json.getJSONArray("tags").getString(0))
+        assertEquals("2024-01-15T14:30", json.getString("dispatch_meeting_id"))
+    }
+
+    @Test
     fun `saveMeetingMeta omits keys when values are null`() {
         val dir = tempDir.newFolder("meeting2")
         repo().saveMeetingMeta(dir, null, null)

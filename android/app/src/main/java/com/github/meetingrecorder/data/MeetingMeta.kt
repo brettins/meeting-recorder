@@ -3,6 +3,10 @@ package com.github.meetingrecorder.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import java.io.File
 
 /**
  * Shared lenient JSON codec for all meeting.json and Gemini wire handling. Unknown keys are
@@ -36,7 +40,24 @@ data class MeetingMeta(
             return meta.copy(title = meta.title?.ifBlank { null })
         }
     }
+}
 
-    /** Serializes to the on-disk meeting.json format; null fields are omitted. */
-    fun toJson(): String = lenientJson.encodeToString(serializer(), this)
+/** meeting.json in [dir] as a raw object; missing or malformed reads as empty. */
+internal fun readMeetingJson(dir: File): JsonObject {
+    val file = File(dir, "meeting.json")
+    if (!file.exists()) return JsonObject(emptyMap())
+    return try {
+        lenientJson.parseToJsonElement(file.readText()).jsonObject
+    } catch (_: Exception) {
+        JsonObject(emptyMap())
+    }
+}
+
+/** Writes [changes] into meeting.json in [dir]; a null value removes its key, and every other key is kept. */
+internal fun updateMeetingJson(dir: File, changes: Map<String, JsonElement?>) {
+    val merged = readMeetingJson(dir).toMutableMap()
+    for ((key, value) in changes) {
+        if (value == null) merged.remove(key) else merged[key] = value
+    }
+    File(dir, "meeting.json").writeText(JsonObject(merged).toString())
 }
