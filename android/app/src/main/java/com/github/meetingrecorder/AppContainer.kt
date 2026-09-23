@@ -3,8 +3,12 @@ package com.github.meetingrecorder
 import android.content.Context
 import android.os.Environment
 import android.os.storage.StorageManager
+import android.util.Log
 import com.github.meetingrecorder.data.Config
+import com.github.meetingrecorder.data.DispatchTokenStore
+import com.github.meetingrecorder.data.EncryptedDispatchTokenStore
 import com.github.meetingrecorder.data.GeminiClient
+import com.github.meetingrecorder.data.MeetingFiling
 import com.github.meetingrecorder.data.MeetingProcessor
 import com.github.meetingrecorder.data.MeetingRepository
 import java.io.File
@@ -26,6 +30,11 @@ class AppContainer(context: Context) {
 
     /** Shared processing workflow (transcribe → summarize → title → save) used by the record and detail flows. */
     val meetingProcessor: MeetingProcessor by lazy { MeetingProcessor(geminiClient, meetingRepository) }
+
+    /** The Dispatch API token, encrypted apart from the plain settings. */
+    val dispatchTokenStore: DispatchTokenStore by lazy { EncryptedDispatchTokenStore(context.applicationContext) }
+
+    val meetingFiling: MeetingFiling by lazy { MeetingFiling(logWarn = { Log.w("MeetingFiling", it) }) }
 
     /**
      * Resolves the shared `Documents` directory on primary external storage

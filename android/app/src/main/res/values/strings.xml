@@ -70,6 +70,15 @@
     <string name="label_summarization_prompt">Summarization Prompt</string>
     <string name="label_meeting_title_prompt">Meeting Title Prompt</string>
     <string name="hint_showing_default">Showing default — edit to customize</string>
+    <string name="tab_dispatch">Dispatch</string>
+    <string name="desc_dispatch">File a finished meeting into Dispatch. Its notes and transcript go onto one meeting item, and each action item becomes a draft task in triage. The token is the one set as DISPATCH_API_TOKEN on the Dispatch server.</string>
+    <string name="label_dispatch_url">Dispatch URL, like https://zed.tailefa891.ts.net</string>
+    <string name="label_dispatch_token">API token</string>
+    <string name="label_dispatch_token_stored">API token — stored, type to replace</string>
+    <string name="label_dispatch_default_company">Default company (blank files under Personal)</string>
+    <string name="action_forget_dispatch_token">Forget the stored token</string>
+    <string name="notice_dispatch_saved">Saved.</string>
+    <string name="notice_dispatch_token_not_stored">The token could not be stored on this device, so filing stays off.</string>
 
     <!-- Meeting Detail Screen -->
     <string name="title_meeting_detail">Meeting Detail</string>
@@ -79,6 +88,15 @@
     <string name="action_generate_notes">Generate notes</string>
     <string name="action_regenerate_notes">Regenerate notes</string>
     <string name="cd_more_options">More options</string>
+    <string name="action_file_into_dispatch">File into Dispatch</string>
+    <string name="title_file_into_dispatch">File into Dispatch</string>
+    <string name="desc_file_again">Filing again updates this meeting in Dispatch rather than adding another.</string>
+    <string name="label_dispatch_company">Company (blank files under Personal)</string>
+    <string name="label_draft_tasks">Draft tasks</string>
+    <string name="desc_draft_tasks">Each ticked line becomes a task in Dispatch\'s triage.</string>
+    <string name="desc_no_draft_tasks">The notes have no action items, so only the meeting is filed.</string>
+    <string name="status_filing">Filing…</string>
+    <string name="action_file">File</string>
 
     <!-- Audio Player -->
     <string name="cd_pause">Pause</string>

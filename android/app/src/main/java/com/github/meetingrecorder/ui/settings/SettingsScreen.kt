@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -45,12 +47,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
 import com.github.meetingrecorder.data.Config
+import com.github.meetingrecorder.data.DispatchConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,11 +88,17 @@ fun SettingsScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.tab_prompts)) },
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text(stringResource(R.string.tab_dispatch)) },
+                )
             }
 
             when (selectedTab) {
                 0 -> GeneralTab(viewModel)
                 1 -> PromptsTab(viewModel)
+                2 -> DispatchTab(viewModel)
             }
         }
     }
@@ -310,6 +320,92 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
                 viewModel.setTitlePrompt(
                     if (titleDraft == Config.DEFAULT_TITLE_PROMPT) "" else titleDraft,
                 )
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.action_save))
+        }
+    }
+}
+
+@Composable
+private fun DispatchTab(viewModel: SettingsViewModel) {
+    val url by viewModel.dispatchUrl.collectAsState()
+    val company by viewModel.dispatchCompany.collectAsState()
+    val hasToken by viewModel.hasDispatchToken.collectAsState()
+    val notice by viewModel.dispatchNotice.collectAsState()
+
+    var urlDraft by rememberSaveable { mutableStateOf(url) }
+    var companyDraft by rememberSaveable { mutableStateOf(company) }
+    var tokenDraft by rememberSaveable { mutableStateOf("") }
+    var forget by rememberSaveable { mutableStateOf(false) }
+    val urlProblem = DispatchConfig.urlError(urlDraft)
+    val tokenStored = hasToken && !forget
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            stringResource(R.string.desc_dispatch),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = urlDraft,
+            onValueChange = { urlDraft = it },
+            label = { Text(stringResource(R.string.label_dispatch_url)) },
+            isError = urlProblem != null,
+            supportingText = urlProblem?.let { { Text(it) } },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = tokenDraft,
+            onValueChange = { tokenDraft = it },
+            label = {
+                Text(stringResource(if (tokenStored) R.string.label_dispatch_token_stored else R.string.label_dispatch_token))
+            },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = companyDraft,
+            onValueChange = { companyDraft = it },
+            label = { Text(stringResource(R.string.label_dispatch_default_company)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        if (tokenStored) {
+            OutlinedButton(onClick = {
+                forget = true
+                tokenDraft = ""
+            }) {
+                Text(stringResource(R.string.action_forget_dispatch_token))
+            }
+        }
+        notice?.let {
+            val problem = it is DispatchNotice.Problem || it is DispatchNotice.TokenNotStored
+            Text(
+                text = when (it) {
+                    DispatchNotice.Saved -> stringResource(R.string.notice_dispatch_saved)
+                    DispatchNotice.TokenNotStored -> stringResource(R.string.notice_dispatch_token_not_stored)
+                    is DispatchNotice.Problem -> it.text
+                },
+                color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Button(
+            onClick = {
+                viewModel.saveDispatch(urlDraft, companyDraft, tokenDraft, forget)
+                tokenDraft = ""
+                forget = false
             },
             modifier = Modifier.fillMaxWidth(),
         ) {

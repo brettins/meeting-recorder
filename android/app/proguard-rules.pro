@@ -13,3 +13,6 @@
 # Kotlin coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+
+# Tink (under security-crypto) references compile-only errorprone annotations
+-dontwarn com.google.errorprone.annotations.**

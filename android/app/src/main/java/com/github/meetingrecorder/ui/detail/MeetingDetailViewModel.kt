@@ -4,6 +4,12 @@ import android.media.MediaPlayer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.meetingrecorder.data.Config
+import com.github.meetingrecorder.data.DispatchClient
+import com.github.meetingrecorder.data.DispatchConfig
+import com.github.meetingrecorder.data.DispatchFiling
+import com.github.meetingrecorder.data.DispatchTokenStore
+import com.github.meetingrecorder.data.MeetingFiler
+import com.github.meetingrecorder.data.MeetingFiling
 import com.github.meetingrecorder.data.MeetingMeta
 import com.github.meetingrecorder.data.MeetingProcessor
 import com.github.meetingrecorder.util.extensionToMimeType
@@ -17,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 /** Generation (transcribe / summarize) status for the detail screen. */
@@ -26,6 +33,15 @@ sealed interface GenState {
     data class Error(val msg: String) : GenState
 }
 
+/** The "File into Dispatch" dialog while it is open. */
+data class FilingDialog(
+    val meetingName: String,
+    val actions: List<String>,
+    val company: String,
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
 // View model for the meeting detail screen. Plain ViewModel — no Context needed (MediaPlayer is
 // context-free); dependencies are constructor-injected via appViewModelFactory. The generation
 // workflows (transcribe/summarize/title/disk writes) live in MeetingProcessor; this class keeps
@@ -33,7 +49,21 @@ sealed interface GenState {
 class MeetingDetailViewModel(
     private val config: Config,
     private val processor: MeetingProcessor,
+    private val dispatchTokens: DispatchTokenStore,
+    private val filing: MeetingFiling,
+    private val dispatchClient: (url: String, token: String) -> MeetingFiler = { url, token -> DispatchClient(url, token) },
 ) : ViewModel() {
+
+    private val _dispatchReady = MutableStateFlow(false)
+    val dispatchReady: StateFlow<Boolean> = _dispatchReady.asStateFlow()
+
+    private val _filingDialog = MutableStateFlow<FilingDialog?>(null)
+    val filingDialog: StateFlow<FilingDialog?> = _filingDialog.asStateFlow()
+
+    private val _filedNotice = MutableStateFlow<String?>(null)
+    val filedNotice: StateFlow<String?> = _filedNotice.asStateFlow()
+
+    private var filingJob: Job? = null
 
     private val _transcript = MutableStateFlow<String?>(null)
     val transcript: StateFlow<String?> = _transcript.asStateFlow()
@@ -88,9 +118,16 @@ class MeetingDetailViewModel(
         timeUpdaterJob = null
         _isPlaying.value = false
         _currentTime.value = "00:00"
+        filingJob?.cancel()
+        _filingDialog.value = null
         val dir = File(meetingPath)
         meetingDir = dir
         _genState.value = GenState.Idle
+        viewModelScope.launch {
+            _dispatchReady.value = withContext(Dispatchers.IO) {
+                DispatchConfig.isConfigured(config.dispatchUrl, dispatchTokens.get().isNotEmpty())
+            }
+        }
         viewModelScope.launch {
             val loaded = withContext(Dispatchers.IO) {
                 val transcript = File(dir, "transcript.md").takeIf { it.exists() }?.readText()
@@ -197,6 +234,56 @@ class MeetingDetailViewModel(
         if (currentTitle.isNullOrBlank()) {
             processor.generateTitle(notes)?.let { currentTitle = it }
         }
+    }
+
+    /** Opens the filing dialog with the notes' action lines and the default company. */
+    fun openFiling() {
+        if (_filingDialog.value != null) return
+        val date = meetingDir?.let { DispatchFiling.startedAt(it.name) } ?: LocalDateTime.now()
+        _filingDialog.value = FilingDialog(
+            meetingName = DispatchFiling.meetingTitle(currentTitle, date),
+            actions = filing.proposedActions(_notes.value.orEmpty()),
+            company = config.dispatchCompany,
+        )
+    }
+
+    fun dismissFiling() {
+        if (_filingDialog.value?.busy == true) return
+        _filingDialog.value = null
+    }
+
+    /** Files the meeting with the ticked [actions] under [company]. */
+    fun fileIntoDispatch(actions: List<String>, company: String) {
+        val dialog = _filingDialog.value ?: return
+        if (dialog.busy) return
+        val dir = meetingDir ?: return
+        _filingDialog.value = dialog.copy(busy = true, error = null, company = company)
+        filingJob = viewModelScope.launch {
+            try {
+                val token = withContext(Dispatchers.IO) { dispatchTokens.get() }
+                if (token.isEmpty()) {
+                    throw IllegalStateException("No Dispatch token is stored. Add it in Settings → Dispatch.")
+                }
+                val filed = filing.file(
+                    filer = dispatchClient(config.dispatchUrl, token),
+                    dir = dir,
+                    title = currentTitle,
+                    durationSeconds = durationSeconds,
+                    actions = actions,
+                    company = company,
+                )
+                _filingDialog.value = null
+                _filedNotice.value = DispatchFiling.filedSummary(filed)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _filingDialog.value = _filingDialog.value?.copy(busy = false, error = e.message ?: "Filing failed.")
+            }
+        }
+    }
+
+    fun consumeFiledNotice() {
+        _filedNotice.value = null
     }
 
     fun playPause() {

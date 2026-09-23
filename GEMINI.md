@@ -117,6 +117,8 @@ A meeting can also be **filed into Dispatch** (Settings → Dispatch: URL, API t
 
 The Android app records in a foreground service so capture survives interruptions, warns (instead of transcribing) when the OS silences the mic mid-call, and keeps failed/crashed recordings in the library so they can be re-processed. Transcript and notes can be generated, or notes regenerated, directly from a meeting's detail screen, and external audio files can be imported via "Use Existing Recording."
 
+The Android app files a meeting into Dispatch too (Settings → Dispatch; ⋮ → File into Dispatch on the detail screen, shown only once a URL and token are set). It ports the Linux rules exactly — action-line parser, meeting id with its `~2` counter and `dispatch_meeting_id` in meeting.json, payload, https unless localhost — so both apps file a meeting onto the same item. The token is kept in `EncryptedSharedPreferences`. Every meeting.json write merges into the existing JSON so keys the Android app does not own survive. See CLAUDE.md.
+
 ## Building and Running
 
 ### Linux App

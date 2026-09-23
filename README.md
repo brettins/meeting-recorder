@@ -405,6 +405,7 @@ error.log  — WARNING and above
 - **Do Not Disturb while recording** (optional) — silence notifications during capture
 - **Meetings browser** — browse and read past transcripts and notes; rename or delete meetings
 - **Audio playback** — play back recordings directly in the meeting detail view
+- **File into Dispatch** (optional) — send a meeting's notes, transcript and action items to Dispatch, the same as the Linux app
 - Recordings saved to `Documents/Meetings/` — same structure as the Linux app
 
 ### Requirements
@@ -438,6 +439,17 @@ Documents/Meetings/
 2. Paste your Gemini API key and choose a model (`gemini-flash-latest` recommended)
 3. Return to the main screen — grant **All files access** when prompted
 4. Tap the microphone button to start recording
+
+### Filing meetings into Dispatch
+
+Set it up in **Settings → Dispatch** with the server's URL, the API token set as
+`DISPATCH_API_TOKEN` on that server, and optionally a default company. The URL needs `https://`;
+plain `http://` only works for `localhost`. The token is kept in encrypted storage on the phone.
+
+Then open a meeting and choose **File into Dispatch** from the ⋮ menu. The dialog lists the action
+lines found in the notes, each with a tick box, so you can untick any that should not become tasks.
+Filing the same meeting again, from either app, updates it in Dispatch rather than adding a second
+one. The audio is not sent. With no URL or token set, the menu item is not shown.
 
 ### Building from Source
 

@@ -59,6 +59,18 @@ class Config(context: Context) {
             prefs.edit().putBoolean("dnd_during_recording_enabled", value).apply()
         }
 
+    var dispatchUrl: String
+        get() = prefs.getString("dispatch_url", "") ?: ""
+        set(value) {
+            prefs.edit().putString("dispatch_url", value).apply()
+        }
+
+    var dispatchCompany: String
+        get() = prefs.getString("dispatch_company", "") ?: ""
+        set(value) {
+            prefs.edit().putString("dispatch_company", value).apply()
+        }
+
     companion object {
         const val DEFAULT_MODEL = "gemini-flash-latest"
 

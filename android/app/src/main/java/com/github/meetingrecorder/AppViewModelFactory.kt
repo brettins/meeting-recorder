@@ -26,13 +26,19 @@ val appViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     }
     initializer {
         val app = meetingRecorderApp
-        MeetingDetailViewModel(app.container.config, app.container.meetingProcessor)
+        MeetingDetailViewModel(
+            app.container.config,
+            app.container.meetingProcessor,
+            app.container.dispatchTokenStore,
+            app.container.meetingFiling,
+        )
     }
     initializer {
         val app = meetingRecorderApp
         MeetingsViewModel(app, app.container.meetingRepository)
     }
     initializer {
-        SettingsViewModel(meetingRecorderApp.container.config)
+        val container = meetingRecorderApp.container
+        SettingsViewModel(container.config, container.dispatchTokenStore)
     }
 }
