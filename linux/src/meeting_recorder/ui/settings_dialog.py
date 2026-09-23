@@ -45,7 +45,14 @@ from ..services.whisper_cpp_service import (
 )
 from ..services.whisper_service import WhisperDownloader, WhisperStatusChecker
 from ..utils.autostart import update_autostart
-from .settings_pages import GeneralPage, IdComboRow, ModelsPage, NotionPage, PromptsPage
+from .settings_pages import (
+    DispatchPage,
+    GeneralPage,
+    IdComboRow,
+    ModelsPage,
+    NotionPage,
+    PromptsPage,
+)
 from .settings_visibility import compute_section_visibility
 
 __all__ = ["IdComboRow", "SettingsDialog", "compute_section_visibility"]
@@ -111,11 +118,13 @@ class SettingsDialog(Adw.Window):
         )
         self._prompts_page = PromptsPage(cfg)
         self._notion_page = NotionPage(cfg)
+        self._dispatch_page = DispatchPage(cfg)
         self._pages = (
             self._general_page,
             self._models_page,
             self._prompts_page,
             self._notion_page,
+            self._dispatch_page,
         )
 
         self._build_ui()
@@ -176,6 +185,9 @@ class SettingsDialog(Adw.Window):
         self._stack.add_titled_with_icon(
             self._notion_page.widget, "notion", "Notion", "send-to-symbolic"
         )
+        self._stack.add_titled_with_icon(
+            self._dispatch_page.widget, "dispatch", "Dispatch", "mail-send-symbolic"
+        )
 
         # Kick off background status checks.
         self._models_page.refresh_local_model_statuses()
@@ -185,13 +197,14 @@ class SettingsDialog(Adw.Window):
     # ------------------------------------------------------------------
 
     def _on_save_clicked(self, *_) -> None:
+        dispatch_warning = self._dispatch_page.warning()
         self._save()
         # Cheap format check so a pasted-wrong API key surfaces now instead of
         # as a failed job at the end of a meeting. Non-blocking: still saves.
-        warning = settings.gemini_key_warning(self._store.load())
+        warning = settings.gemini_key_warning(self._store.load()) or dispatch_warning
         if warning:
             alert = Gtk.AlertDialog()
-            alert.set_message("API Key Warning")
+            alert.set_message("Check this setting")
             alert.set_detail(warning)
             alert.set_buttons(["OK"])
             alert.show(self.get_transient_for())

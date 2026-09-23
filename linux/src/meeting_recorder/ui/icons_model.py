@@ -16,6 +16,7 @@ TAG_ICONS = ("tag-symbolic", "bookmark-new-symbolic", "user-bookmarks-symbolic")
 TAG_LIST_ICONS = ("view-list-symbolic", "view-list-bullet-symbolic")
 SPLIT_ICONS = ("edit-cut-symbolic", "object-flip-vertical-symbolic", "view-list-symbolic")
 NOTION_ICONS = ("send-to-symbolic", "document-send-symbolic", "document-save-symbolic")
+DISPATCH_ICONS = ("mail-send-symbolic", "mail-reply-sender-symbolic", "document-send-symbolic")
 
 
 def pick_icon_name(names: Sequence[str], has_icon: Callable[[str], bool]) -> str:

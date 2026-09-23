@@ -1,6 +1,12 @@
 """Tests for cross-theme icon selection."""
 
-from meeting_recorder.ui.icons_model import TAG_ICONS, TAG_LIST_ICONS, pick_icon_name
+from meeting_recorder.ui.icons_model import (
+    DISPATCH_ICONS,
+    NOTION_ICONS,
+    TAG_ICONS,
+    TAG_LIST_ICONS,
+    pick_icon_name,
+)
 
 
 def theme_with(*available):
@@ -38,3 +44,9 @@ class TestTagIconCandidates:
         assert pick_icon_name(TAG_LIST_ICONS, theme_with("view-list-symbolic")) == (
             "view-list-symbolic"
         )
+
+
+class TestDispatchIconCandidates:
+    def test_it_does_not_look_like_the_notion_button(self):
+        both = theme_with(*NOTION_ICONS, *DISPATCH_ICONS)
+        assert pick_icon_name(DISPATCH_ICONS, both) != pick_icon_name(NOTION_ICONS, both)

@@ -31,6 +31,7 @@ from ..core.row_model import (
     DETAILS,
     DISMISS,
     ERROR,
+    FILE_TO_DISPATCH,
     FILE_TO_NOTION,
     OPEN_FOLDER,
     PROCESSING,
@@ -44,7 +45,7 @@ from ..core.row_model import (
     RowModel,
 )
 from ..utils.gtk_compat import remove_all_children
-from .icons import notion_icon, split_icon, tag_icon
+from .icons import dispatch_icon, notion_icon, split_icon, tag_icon
 from .tag_widgets import make_tag_chip
 
 # id -> (kind, icon-or-label, tooltip). "icon" buttons are the quiet per-meeting
@@ -221,6 +222,10 @@ class MeetingRow(Gtk.ListBoxRow):
             elif action == FILE_TO_NOTION:
                 btn = Gtk.Button(icon_name=notion_icon())
                 btn.set_tooltip_text("File this meeting into Notion")
+                btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
+            elif action == FILE_TO_DISPATCH:
+                btn = Gtk.Button(icon_name=dispatch_icon())
+                btn.set_tooltip_text("File this meeting into Dispatch")
                 btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
             elif action == TAG:
                 btn = Gtk.MenuButton(icon_name=tag_icon())

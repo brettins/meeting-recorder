@@ -121,6 +121,23 @@ button.
 > Notion accepts 5 MiB per file on a free workspace and 5 GiB on a paid one. A recording over
 > that limit is reported and the notes are still filed.
 
+### Filing meetings into Dispatch
+
+A finished meeting can also be filed into Dispatch, a personal work hub: the notes and the
+transcript land on one meeting item, and each action item in the notes becomes a draft task in
+Dispatch's triage.
+
+Set it up in **Settings → Dispatch** with the server's URL (for example `http://dispatch:8000`),
+the API token set as `DISPATCH_API_TOKEN` on that server, and optionally a default company. The
+token goes into the system keyring when one is available, and otherwise into the chmod-600
+config file, the same as the Gemini key.
+
+Then click the send icon next to the Notion one on any meeting with notes or a transcript. The
+window lists the action lines it found (under an "Action items" or "Next steps" heading, plus any
+unticked checkbox) so you can untick any that should not become tasks. Filing the same meeting
+again updates it in Dispatch rather than adding a second one, and never rewrites a task that is
+already there. The audio is not sent.
+
 
 ### Installation
 

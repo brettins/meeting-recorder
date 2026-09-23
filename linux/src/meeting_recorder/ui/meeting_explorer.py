@@ -26,6 +26,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk
 
 from meeting_recorder.config import settings
 from meeting_recorder.config.defaults import TITLE_PROMPT
+from meeting_recorder.config.dispatch_config import is_configured as dispatch_configured
 from meeting_recorder.config.notion_config import load_workspaces
 from meeting_recorder.config.tags import (
     UNTAGGED,
@@ -52,6 +53,7 @@ from meeting_recorder.utils.meeting_scanner import (
 
 from ..core import row_model as rm
 from ..utils.glib_bridge import idle_call
+from .dispatch_dialog import DispatchFileDialog
 from .icons import tag_list_icon
 from .meeting_row import MeetingRow, RowListView
 from .notion_dialog import NotionFileDialog
@@ -147,6 +149,7 @@ class MeetingExplorer(Gtk.Box):
         self._by_key: dict[str, Meeting] = {}
         self._jobs: list = []
         self._notion_workspaces: list = []
+        self._dispatch_config: dict = {}
         self._recording_dir = ""
         self._job_signature: tuple = ()
 
@@ -176,6 +179,7 @@ class MeetingExplorer(Gtk.Box):
         output_folder = cfg.get("output_folder", "~/meetings")
         self._registry = parse_tags(cfg.get("tags"))
         self._notion_workspaces = load_workspaces(cfg)
+        self._dispatch_config = cfg if dispatch_configured(cfg) else {}
         self._colors = color_map(self._registry)
         self._rebuild_filter()
         self._all_meetings = scan_meetings(output_folder)
@@ -216,6 +220,7 @@ class MeetingExplorer(Gtk.Box):
                 jobs_by_dir.get(str(m.path)),
                 is_recording=str(m.path) == self._recording_dir,
                 can_file_to_notion=bool(self._notion_workspaces),
+                can_file_to_dispatch=bool(self._dispatch_config),
             )
             for m in meetings
         ]
@@ -266,6 +271,8 @@ class MeetingExplorer(Gtk.Box):
             self._open_split_dialog(meeting)
         elif action == rm.FILE_TO_NOTION:
             self._open_notion_dialog(meeting)
+        elif action == rm.FILE_TO_DISPATCH:
+            self._open_dispatch_dialog(meeting)
         elif action == rm.SUMMARIZE:
             if row is not None:
                 row.set_action_sensitive(rm.SUMMARIZE, False)
@@ -464,6 +471,21 @@ class MeetingExplorer(Gtk.Box):
             window if isinstance(window, Gtk.Window) else None,
             meeting,
             self._notion_workspaces,
+            on_finished=self._show_notice,
+        )
+        dialog.present()
+
+    def _open_dispatch_dialog(self, meeting: Meeting) -> None:
+        if not self._dispatch_config:
+            self._show_error(
+                "Dispatch is not set up. Add its URL and token in Settings → Dispatch."
+            )
+            return
+        window = self.get_root()
+        dialog = DispatchFileDialog(
+            window if isinstance(window, Gtk.Window) else None,
+            meeting,
+            self._dispatch_config,
             on_finished=self._show_notice,
         )
         dialog.present()

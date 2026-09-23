@@ -157,6 +157,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # settings.load() only keeps keys present here, so a key missing from this
     # dict is silently dropped on every read.
     "notion_workspaces": [],
+    # Dispatch, the work hub a meeting can be filed into. The token is the
+    # "@keyring" sentinel when the Secret Service holds it, else the token
+    # itself in this chmod-600 file. See config/dispatch_config.py.
+    "dispatch_url": "",
+    "dispatch_api_token": "",
+    "dispatch_company": "",
     "transcription_prompt": "",
     "summarization_prompt": "",
     "title_prompt": "",

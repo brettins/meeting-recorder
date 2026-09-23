@@ -7,10 +7,11 @@ itself (``meeting_recorder.ui.settings_dialog``) stays a thin shell: header
 chrome, page instantiation, and the save flow.
 """
 
+from .dispatch import DispatchPage
 from .general import GeneralPage
 from .models import ModelsPage
 from .notion import NotionPage
 from .prompts import PromptsPage
 from .widgets import IdComboRow
 
-__all__ = ["GeneralPage", "IdComboRow", "ModelsPage", "NotionPage", "PromptsPage"]
+__all__ = ["DispatchPage", "GeneralPage", "IdComboRow", "ModelsPage", "NotionPage", "PromptsPage"]

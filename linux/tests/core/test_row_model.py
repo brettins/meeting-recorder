@@ -345,3 +345,45 @@ class TestSplitAction:
         meeting = make_meeting(has_audio=True)
         job = make_job(status=JobStatus.PROCESSING)
         assert rm.SPLIT not in rm.row_from_meeting(meeting, job).actions
+
+
+class TestDispatchFiling:
+    def _actions(self, **overrides):
+        options = {
+            "has_notes": True,
+            "has_transcript": True,
+            "has_audio": True,
+            "has_title": True,
+            "can_summarize": True,
+            "can_file_to_dispatch": True,
+        }
+        options.update(overrides)
+        return rm.meeting_actions(**options)
+
+    def test_notes_offer_dispatch_filing_when_it_is_set_up(self):
+        assert rm.FILE_TO_DISPATCH in self._actions(has_transcript=False)
+
+    def test_a_transcript_alone_is_enough(self):
+        assert rm.FILE_TO_DISPATCH in self._actions(has_notes=False)
+
+    def test_audio_alone_is_not_filed(self):
+        assert rm.FILE_TO_DISPATCH not in self._actions(has_notes=False, has_transcript=False)
+
+    def test_not_set_up_hides_the_action(self):
+        assert rm.FILE_TO_DISPATCH not in self._actions(can_file_to_dispatch=False)
+
+    def test_it_sits_beside_notion(self):
+        actions = self._actions(can_file_to_notion=True)
+        assert actions.index(rm.FILE_TO_DISPATCH) == actions.index(rm.FILE_TO_NOTION) + 1
+
+    def test_a_ready_row_carries_it(self):
+        meeting = make_meeting(has_notes=True, title="Marketing")
+        assert (
+            rm.FILE_TO_DISPATCH in rm.row_from_meeting(meeting, can_file_to_dispatch=True).actions
+        )
+
+    def test_a_processing_row_never_offers_it(self):
+        meeting = make_meeting(has_notes=True, title="Marketing")
+        job = make_job(status=JobStatus.PROCESSING)
+        row = rm.row_from_meeting(meeting, job, can_file_to_dispatch=True)
+        assert rm.FILE_TO_DISPATCH not in row.actions
