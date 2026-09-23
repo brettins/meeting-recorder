@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,8 @@ from .notion_filing import read_text
 _FOLDER_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})")
 
 ID_KEY = "dispatch_meeting_id"
+
+logger = logging.getLogger(__name__)
 
 
 class MeetingLike(Protocol):
@@ -124,8 +127,10 @@ def file_meeting(
     filed = client.file_meeting(payload)
     try:
         write_metadata(meeting.path, {ID_KEY: meeting_id})
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.warning(
+            "Filed, but could not keep the meeting id in meeting.json: %s", type(exc).__name__
+        )
     return filed
 
 

@@ -51,6 +51,13 @@ class DispatchPage:
         self._url = Adw.EntryRow(title="Dispatch URL, like https://zed.tailefa891.ts.net")
         self._url.set_text(str(cfg.get(URL_KEY) or ""))
         group.add(self._url)
+        # A stored URL this version refuses hides the Library button, so say
+        # why the moment the page opens rather than only on Save.
+        stored_problem = url_error(self._url.get_text())
+        if stored_problem:
+            self._url.add_css_class("error")
+            self._url.set_tooltip_text(stored_problem)
+            group.set_description(stored_problem)
 
         self._token = Adw.PasswordEntryRow(title=self._token_title())
         group.add(self._token)
