@@ -8,10 +8,13 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ..services.dispatch_service import FiledMeeting
+from ..utils.meeting_scanner import read_metadata, write_metadata
 from .action_items import extract_actions
 from .notion_filing import read_text
 
 _FOLDER_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})")
+
+ID_KEY = "dispatch_meeting_id"
 
 
 class MeetingLike(Protocol):
@@ -34,6 +37,28 @@ def meeting_id_for(path: Path, date: datetime) -> str:
     return date.strftime("%Y-%m-%dT%H:%M")
 
 
+def unused_id(base: str, taken: set[str]) -> str:
+    """*base*, or *base* with the first counter no other meeting holds."""
+    candidate, n = base, 2
+    while candidate in taken:
+        candidate = f"{base}~{n}"
+        n += 1
+    return candidate
+
+
+def stable_meeting_id(path: Path, date: datetime) -> str:
+    """The id this meeting was filed under before, or one no meeting beside it holds."""
+    held = str(read_metadata(path).get(ID_KEY) or "")
+    if held:
+        return held
+    siblings: set[str] = set()
+    if path.parent.is_dir():
+        for other in path.parent.iterdir():
+            if other.is_dir() and other != path:
+                siblings.add(str(read_metadata(other).get(ID_KEY) or ""))
+    return unused_id(meeting_id_for(path, date), siblings)
+
+
 def meeting_title(title: str | None, date: datetime) -> str:
     """The meeting's title, or its start time when it was never named."""
     if title and title.strip():
@@ -48,10 +73,11 @@ def build_payload(
     transcript: str,
     actions: list[str],
     company: str = "",
+    meeting_id: str = "",
 ) -> dict[str, Any]:
     """The body ``POST /api/meetings`` takes. The date carries the local offset."""
     payload: dict[str, Any] = {
-        "meeting_id": meeting_id_for(meeting.path, meeting.date),
+        "meeting_id": meeting_id or meeting_id_for(meeting.path, meeting.date),
         "title": meeting_title(meeting.title, meeting.date),
         "date": meeting.date.astimezone().isoformat(timespec="minutes"),
         "duration_seconds": int(meeting.duration_seconds or 0),
@@ -84,10 +110,23 @@ def file_meeting(
     """Read the meeting from disk and file it. *actions* overrides the parsed lines."""
     notes, transcript = read_meeting(meeting.path)
     chosen = proposed_actions(notes) if actions is None else actions
+    # Two meetings can start in the same minute; the id is fixed on first
+    # filing and kept in meeting.json, so a rename or a sibling cannot move it.
+    meeting_id = stable_meeting_id(meeting.path, meeting.date)
     payload = build_payload(
-        meeting, notes=notes, transcript=transcript, actions=chosen, company=company
+        meeting,
+        notes=notes,
+        transcript=transcript,
+        actions=chosen,
+        company=company,
+        meeting_id=meeting_id,
     )
-    return client.file_meeting(payload)
+    filed = client.file_meeting(payload)
+    try:
+        write_metadata(meeting.path, {ID_KEY: meeting_id})
+    except OSError:
+        pass
+    return filed
 
 
 def filed_summary(filed: FiledMeeting) -> str:

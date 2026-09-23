@@ -46,7 +46,18 @@ class FakeStore:
 
 class TestUrl:
     def test_a_trailing_slash_goes(self):
-        assert normalise_url(" http://dispatch:8000/ ") == "http://dispatch:8000"
+        assert normalise_url(" https://dispatch:8000/ ") == "https://dispatch:8000"
+
+    def test_plain_http_to_another_machine_is_refused(self):
+        # The token rides in a header; over http it crosses the network readable.
+        assert normalise_url("http://dispatch:8000") == ""
+
+    def test_plain_http_to_this_machine_is_allowed(self):
+        assert normalise_url("http://127.0.0.1:8420") == "http://127.0.0.1:8420"
+        assert normalise_url("http://localhost:8420") == "http://localhost:8420"
+
+    def test_a_capitalised_scheme_still_counts(self):
+        assert normalise_url("HTTPS://dispatch.tail.ts.net") == "HTTPS://dispatch.tail.ts.net"
 
     def test_https_is_kept(self):
         assert normalise_url("https://dispatch.tail.ts.net") == "https://dispatch.tail.ts.net"
@@ -61,13 +72,16 @@ class TestUrl:
         assert url_error("") is None
 
     def test_a_bad_url_says_what_to_type(self):
-        assert "http://" in url_error("dispatch")
+        assert "https://" in url_error("dispatch")
+
+    def test_plain_http_off_the_machine_says_why(self):
+        assert "unencrypted" in url_error("http://dispatch:8000")
 
 
 class TestConfigured:
     def test_url_and_token_are_both_needed(self):
-        assert is_configured({URL_KEY: "http://d:8000", TOKEN_KEY: KEYRING_SENTINEL})
-        assert not is_configured({URL_KEY: "http://d:8000", TOKEN_KEY: ""})
+        assert is_configured({URL_KEY: "https://d:8000", TOKEN_KEY: KEYRING_SENTINEL})
+        assert not is_configured({URL_KEY: "https://d:8000", TOKEN_KEY: ""})
         assert not is_configured({URL_KEY: "", TOKEN_KEY: "t"})
 
     def test_a_bad_url_is_not_configured(self):
@@ -75,7 +89,7 @@ class TestConfigured:
 
     def test_it_never_reads_the_keyring(self):
         # The sentinel alone says a token exists; resolving it would cost a handshake.
-        assert is_configured({URL_KEY: "http://d", TOKEN_KEY: KEYRING_SENTINEL})
+        assert is_configured({URL_KEY: "https://d", TOKEN_KEY: KEYRING_SENTINEL})
 
 
 class TestToken:

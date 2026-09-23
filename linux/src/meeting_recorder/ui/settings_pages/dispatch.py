@@ -48,7 +48,7 @@ class DispatchPage:
                 "The token is the one set as DISPATCH_API_TOKEN on the Dispatch server."
             ),
         )
-        self._url = Adw.EntryRow(title="Dispatch URL, like http://dispatch:8000")
+        self._url = Adw.EntryRow(title="Dispatch URL, like https://zed.tailefa891.ts.net")
         self._url.set_text(str(cfg.get(URL_KEY) or ""))
         group.add(self._url)
 

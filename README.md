@@ -127,7 +127,7 @@ A finished meeting can also be filed into Dispatch, a personal work hub: the not
 transcript land on one meeting item, and each action item in the notes becomes a draft task in
 Dispatch's triage.
 
-Set it up in **Settings → Dispatch** with the server's URL (for example `http://dispatch:8000`),
+Set it up in **Settings → Dispatch** with the server's URL (for example `https://zed.tailefa891.ts.net`; plain `http://` is accepted only for `localhost`),
 the API token set as `DISPATCH_API_TOKEN` on that server, and optionally a default company. The
 token goes into the system keyring when one is available, and otherwise into the chmod-600
 config file, the same as the Gemini key.

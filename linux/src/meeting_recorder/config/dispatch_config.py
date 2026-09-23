@@ -34,9 +34,16 @@ def normalise_url(text: str) -> str:
     if not candidate:
         return ""
     parts = urlsplit(candidate)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
+    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+        return ""
+    if parts.scheme.lower() == "http" and not is_local(parts.hostname or ""):
         return ""
     return candidate
+
+
+def is_local(host: str) -> bool:
+    """Whether a host never leaves this machine, so a token may cross it unencrypted."""
+    return host.lower() in ("localhost", "127.0.0.1", "::1")
 
 
 def url_error(text: str) -> str | None:
@@ -45,7 +52,8 @@ def url_error(text: str) -> str | None:
         return None
     if not normalise_url(text):
         return (
-            "The Dispatch URL needs to start with http:// or https://, like http://dispatch:8000."
+            "The Dispatch URL needs https://, like https://zed.tailefa891.ts.net. "
+            "Plain http:// only works for this machine, because the token would travel unencrypted."
         )
     return None
 

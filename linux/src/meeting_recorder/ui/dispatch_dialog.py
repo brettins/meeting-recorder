@@ -144,7 +144,7 @@ class DispatchFileDialog(Adw.Window):
                 filed = file_meeting(client, meeting, actions=actions, company=company)
                 GLib.idle_add(self._on_filed, filed_summary(filed), None)
             except Exception as exc:
-                logger.warning("Could not file into Dispatch: %s", exc)
+                logger.warning("Could not file into Dispatch: %s", type(exc).__name__)
                 GLib.idle_add(self._on_filed, "", str(exc))
 
         threading.Thread(target=_bg, daemon=True).start()

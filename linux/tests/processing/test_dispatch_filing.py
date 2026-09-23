@@ -135,3 +135,68 @@ class TestSummary:
 
     def test_refiling_a_meeting_without_tasks(self):
         assert filed_summary(_filed(False)) == "Updated DSP-9 in Dispatch."
+
+
+class TestAStableMeetingId:
+    """Two meetings in one minute must not file over each other."""
+
+    def _folder(self, root, name):
+        path = root / name
+        path.mkdir(parents=True)
+        return path
+
+    def test_the_first_filing_takes_the_minute(self, tmp_path):
+        from datetime import datetime
+
+        from meeting_recorder.processing.dispatch_filing import stable_meeting_id
+
+        path = self._folder(tmp_path, "2026-03-01_14-30")
+        assert stable_meeting_id(path, datetime(2026, 3, 1, 14, 30)) == "2026-03-01T14:30"
+
+    def test_a_second_meeting_in_the_same_minute_gets_its_own(self, tmp_path):
+        from datetime import datetime
+
+        from meeting_recorder.processing.dispatch_filing import ID_KEY, stable_meeting_id
+        from meeting_recorder.utils.meeting_scanner import write_metadata
+
+        first = self._folder(tmp_path, "2026-03-01_14-30")
+        write_metadata(first, {ID_KEY: "2026-03-01T14:30"})
+        second = self._folder(tmp_path, "2026-03-01_14-30_2")
+        assert stable_meeting_id(second, datetime(2026, 3, 1, 14, 30)) == "2026-03-01T14:30~2"
+
+    def test_an_id_once_given_survives_a_rename(self, tmp_path):
+        from datetime import datetime
+
+        from meeting_recorder.processing.dispatch_filing import ID_KEY, stable_meeting_id
+        from meeting_recorder.utils.meeting_scanner import write_metadata
+
+        path = self._folder(tmp_path, "2026-03-01_14-30_Budget")
+        write_metadata(path, {ID_KEY: "2026-03-01T14:30~2"})
+        assert stable_meeting_id(path, datetime(2026, 3, 1, 14, 30)) == "2026-03-01T14:30~2"
+
+    def test_filing_writes_the_id_down(self, tmp_path):
+        from datetime import datetime
+
+        from meeting_recorder.processing.dispatch_filing import ID_KEY, file_meeting
+        from meeting_recorder.services.dispatch_service import FiledMeeting
+        from meeting_recorder.utils.meeting_scanner import read_metadata
+
+        path = self._folder(tmp_path, "2026-03-01_14-30")
+        (path / "notes.md").write_text("Notes", encoding="utf-8")
+
+        class Meeting:
+            pass
+
+        meeting = Meeting()
+        meeting.path = path
+        meeting.date = datetime(2026, 3, 1, 14, 30)
+        meeting.title = None
+        meeting.duration_seconds = 60
+
+        class Client:
+            def file_meeting(self, payload):
+                self.payload = payload
+                return FiledMeeting(key="DSP-1", url="", created=True)
+
+        file_meeting(Client(), meeting)
+        assert read_metadata(path)[ID_KEY] == "2026-03-01T14:30"
