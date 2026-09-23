@@ -23,7 +23,7 @@ class AppContainer(context: Context) {
     val config: Config = Config(context)
 
     val meetingRepository: MeetingRepository =
-        MeetingRepository(File(documentsDirectory(context), "Meetings"))
+        MeetingRepository(File(documentsDirectory(context), "Meetings")) { Log.w("MeetingRepository", it) }
 
     /** Shared Gemini client; it reads the latest key/model/prompts from [config] on every call. */
     val geminiClient: GeminiClient by lazy { GeminiClient(config) }

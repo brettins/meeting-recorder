@@ -63,9 +63,7 @@ object DispatchFiling {
     }
 
     /** Keeps [id] in meeting.json so a rename or a sibling cannot move it; every other key survives. */
-    fun rememberId(dir: File, id: String) {
-        updateMeetingJson(dir, mapOf(ID_KEY to JsonPrimitive(id)))
-    }
+    fun rememberId(dir: File, id: String): Boolean = updateMeetingJson(dir, mapOf(ID_KEY to JsonPrimitive(id)))
 
     private fun heldId(dir: File): String? =
         (readMeetingJson(dir)[ID_KEY] as? JsonPrimitive)?.contentOrNull?.ifBlank { null }
@@ -154,7 +152,9 @@ class MeetingFiling(
         val filed = filer.fileMeeting(payload)
         withContext(ioDispatcher) {
             try {
-                DispatchFiling.rememberId(dir, meetingId)
+                if (!DispatchFiling.rememberId(dir, meetingId)) {
+                    logWarn("Filed, but meeting.json could not be read, so the meeting id was not kept")
+                }
             } catch (e: Exception) {
                 logWarn("Filed, but could not keep the meeting id in meeting.json: ${e.javaClass.simpleName}")
             }

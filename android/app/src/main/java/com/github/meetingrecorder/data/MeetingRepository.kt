@@ -4,7 +4,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import java.time.LocalDateTime
 
-class MeetingRepository(private val rootDir: File) : MeetingStore {
+class MeetingRepository(
+    private val rootDir: File,
+    private val logWarn: (String) -> Unit = {},
+) : MeetingStore {
 
     // Captured when the repository (a per-process singleton) is constructed — effectively app launch.
     // recoverOrphanedRecordings() only acts on directories locked *before* this moment, so a recording
@@ -134,11 +137,14 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
     }
 
     override fun saveMeetingMeta(dir: File, title: String?, durationSeconds: Int?) {
-        updateMeetingJson(
+        keptOrSaid(
             dir,
-            mapOf(
-                "title" to title?.let { JsonPrimitive(it) },
-                "duration_seconds" to durationSeconds?.let { JsonPrimitive(it) },
+            updateMeetingJson(
+                dir,
+                mapOf(
+                    "title" to title?.let { JsonPrimitive(it) },
+                    "duration_seconds" to durationSeconds?.let { JsonPrimitive(it) },
+                ),
             ),
         )
     }
@@ -160,7 +166,7 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
         }
 
         // Edits the raw JSON tree, not MeetingMeta, so duration_seconds and Linux-written keys survive.
-        updateMeetingJson(newDir, mapOf("title" to cleanTitle?.let { JsonPrimitive(it) }))
+        keptOrSaid(newDir, updateMeetingJson(newDir, mapOf("title" to cleanTitle?.let { JsonPrimitive(it) })))
 
         return newDir
     }
@@ -184,5 +190,9 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun keptOrSaid(dir: File, written: Boolean) {
+        if (!written) logWarn("meeting.json in ${dir.name} could not be read, so it was left as it was")
     }
 }
