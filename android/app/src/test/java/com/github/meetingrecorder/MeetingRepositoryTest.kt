@@ -403,4 +403,28 @@ class MeetingRepositoryTest {
         assertTrue(second.name != first.name)
         assertEquals("first", File(first, "recording.m4a").readText())
     }
+
+    @Test
+    fun `a meeting_json that cannot be read is left alone rather than replaced`() {
+        val dir = repo().createMeetingDir("Standup")
+        val broken = "{\"title\": \"Standup\", \"tags\": [\"sing\""
+        File(dir, "meeting.json").writeText(broken)
+        repo().saveMeetingMeta(dir, "Standup", 60)
+        assertEquals(broken, File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `a meeting_json holding an array is left alone too`() {
+        val dir = repo().createMeetingDir("Standup")
+        File(dir, "meeting.json").writeText("[1, 2]")
+        repo().saveMeetingMeta(dir, "Standup", 60)
+        assertEquals("[1, 2]", File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `a write leaves no temporary file behind`() {
+        val dir = repo().createMeetingDir("Standup")
+        repo().saveMeetingMeta(dir, "Standup", 60)
+        assertFalse(File(dir, "meeting.json.tmp").exists())
+    }
 }

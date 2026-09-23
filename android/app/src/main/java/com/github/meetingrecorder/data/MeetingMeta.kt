@@ -43,21 +43,36 @@ data class MeetingMeta(
 }
 
 /** meeting.json in [dir] as a raw object; missing or malformed reads as empty. */
-internal fun readMeetingJson(dir: File): JsonObject {
+internal fun readMeetingJson(dir: File): JsonObject = readMeetingJsonChecked(dir) ?: JsonObject(emptyMap())
+
+/** meeting.json in [dir]: empty when there is none, null when one exists and cannot be read. */
+internal fun readMeetingJsonChecked(dir: File): JsonObject? {
     val file = File(dir, "meeting.json")
     if (!file.exists()) return JsonObject(emptyMap())
     return try {
         lenientJson.parseToJsonElement(file.readText()).jsonObject
     } catch (_: Exception) {
-        JsonObject(emptyMap())
+        null
     }
 }
 
-/** Writes [changes] into meeting.json in [dir]; a null value removes its key, and every other key is kept. */
-internal fun updateMeetingJson(dir: File, changes: Map<String, JsonElement?>) {
-    val merged = readMeetingJson(dir).toMutableMap()
+/**
+ * Writes [changes] into meeting.json in [dir]; a null value removes its key, and every other key is kept.
+ * Returns false, writing nothing, when an existing meeting.json cannot be read.
+ */
+internal fun updateMeetingJson(dir: File, changes: Map<String, JsonElement?>): Boolean {
+    // Merging onto a failed read would replace the tags, title and filing id
+    // with only the keys being written. The Linux app refuses for the same reason.
+    val merged = readMeetingJsonChecked(dir)?.toMutableMap() ?: return false
     for ((key, value) in changes) {
         if (value == null) merged.remove(key) else merged[key] = value
     }
-    File(dir, "meeting.json").writeText(JsonObject(merged).toString())
+    // Written beside and renamed over, so a process killed mid-write leaves the old file whole.
+    val tmp = File(dir, "meeting.json.tmp")
+    tmp.writeText(JsonObject(merged).toString())
+    if (!tmp.renameTo(File(dir, "meeting.json"))) {
+        tmp.delete()
+        return false
+    }
+    return true
 }
