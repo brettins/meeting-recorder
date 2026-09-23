@@ -33,17 +33,15 @@ This repository is a monorepo with two independent apps — a Linux desktop appl
 
 ### Output Structure
 
-Each recording session creates a folder:
+Each recording session creates a folder named for the minute it started, with a `_2`
+counter when that minute already holds a meeting:
 
 ```
 ~/meetings/
-└── 2026/
-    └── March/
-        └── 04/
-            └── 14-30_Standup/
-                ├── recording.mp3
-                ├── transcript.md
-                └── notes.md
+└── 2026-03-04_14-30_Standup/
+    ├── recording.mp3
+    ├── transcript.md
+    └── notes.md
 ```
 
 ### Requirements
@@ -420,17 +418,14 @@ Download `meeting-recorder-android-*.apk` from the [Releases](../../releases) pa
 
 ### Output Structure
 
-Recordings are saved to `Documents/Meetings/` on external storage, in the same dated hierarchy as the Linux app:
+Recordings are saved to `Documents/Meetings/` on external storage, in the same folder layout as the Linux app:
 
 ```
 Documents/Meetings/
-└── 2026/
-    └── March/
-        └── 04/
-            └── 14-30_Standup/
-                ├── recording.m4a
-                ├── transcript.md
-                └── notes.md
+└── 2026-03-04_14-30_Standup/
+    ├── recording.m4a
+    ├── transcript.md
+    └── notes.md
 ```
 
 ### First-Time Setup
@@ -449,7 +444,7 @@ plain `http://` only works for `localhost`. The token is kept in encrypted stora
 Then open a meeting and choose **File into Dispatch** from the ⋮ menu. The dialog lists the action
 lines found in the notes, each with a tick box, so you can untick any that should not become tasks.
 Filing the same meeting again, from either app, updates it in Dispatch rather than adding a second
-one. The audio is not sent. With no URL or token set, the menu item is not shown.
+one, and never rewrites a task that is already there. The audio is not sent. With no URL or token set, the menu item is not shown.
 
 ### Building from Source
 
