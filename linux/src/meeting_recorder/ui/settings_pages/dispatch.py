@@ -57,7 +57,6 @@ class DispatchPage:
         if stored_problem:
             self._url.add_css_class("error")
             self._url.set_tooltip_text(stored_problem)
-            group.set_description(stored_problem)
 
         self._token = Adw.PasswordEntryRow(title=self._token_title())
         group.add(self._token)
@@ -66,6 +65,12 @@ class DispatchPage:
         self._company.set_text(str(cfg.get(COMPANY_KEY) or ""))
         group.add(self._company)
         box.append(group)
+
+        if stored_problem:
+            problem = Gtk.Label(label=stored_problem, xalign=0, wrap=True)
+            problem.add_css_class("error")
+            problem.add_css_class("caption")
+            box.append(problem)
 
         self._forget_btn = Gtk.Button(label="Forget the stored token")
         self._forget_btn.add_css_class("pill")
