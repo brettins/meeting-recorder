@@ -60,9 +60,7 @@ def error_message(status: int, body: bytes | str) -> str:
     if status == 401:
         return "Dispatch refused the API token. Check it in Settings → Dispatch."
     if status == 503:
-        return (
-            "Dispatch has no API token set, so it accepts no filing. Set DISPATCH_API_TOKEN there."
-        )
+        return "The Dispatch server has no API token configured. Set DISPATCH_API_TOKEN on it."
     if status == 404:
         return "Nothing at that address files meetings. Check the URL in Settings → Dispatch."
     return detail or f"Dispatch returned HTTP {status}."

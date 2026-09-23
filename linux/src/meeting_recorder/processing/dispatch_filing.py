@@ -144,5 +144,5 @@ def filed_summary(filed: FiledMeeting) -> str:
     if new:
         return f"Updated {name} in Dispatch, and added {tasks} to triage."
     if filed.tasks:
-        return f"Updated {name} in Dispatch. Its tasks were already there."
+        return f"Updated {name} in Dispatch. Its tasks are already there."
     return f"Updated {name} in Dispatch."

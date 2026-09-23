@@ -127,9 +127,9 @@ A finished meeting can also be filed into Dispatch, a personal work hub: the not
 transcript land on one meeting item, and each action item in the notes becomes a draft task in
 Dispatch's triage.
 
-Set it up in **Settings → Dispatch** with the server's URL (for example `https://zed.tailefa891.ts.net`; plain `http://` is accepted only for `localhost`),
-the API token set as `DISPATCH_API_TOKEN` on that server, and optionally a default company. The
-token goes into the system keyring when one is available, and otherwise into the chmod-600
+Set it up in **Settings → Dispatch** with the server's URL, the API token set as `DISPATCH_API_TOKEN` on that server, and optionally a
+default company. The URL needs `https://`; plain `http://` only works for `localhost`. The token
+goes into the system keyring when one is available, and otherwise into the permission-restricted
 config file, the same as the Gemini key.
 
 Then click the send icon next to the Notion one on any meeting with notes or a transcript. The
