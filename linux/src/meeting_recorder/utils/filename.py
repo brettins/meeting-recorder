@@ -40,10 +40,20 @@ def output_paths(
         folder_name = f"{date_time_part}_{sanitize_title(title)}"
     else:
         folder_name = date_time_part
-    session_dir = Path(os.path.expanduser(output_folder)) / folder_name
+    session_dir = fresh_dir(Path(os.path.expanduser(output_folder)), folder_name)
     session_dir.mkdir(parents=True, exist_ok=True)
     return (
         session_dir / "recording.mp3",
         session_dir / "transcript.md",
         session_dir / "notes.md",
     )
+
+
+def fresh_dir(parent: Path, name: str) -> Path:
+    """*parent*/*name*, or the first ``_2``, ``_3``… beside it that holds no meeting yet."""
+    candidate = parent / name
+    n = 2
+    while candidate.exists() and any(candidate.iterdir()):
+        candidate = parent / f"{name}_{n}"
+        n += 1
+    return candidate

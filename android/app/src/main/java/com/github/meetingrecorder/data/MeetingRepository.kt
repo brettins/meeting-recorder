@@ -121,7 +121,14 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
             "${datePart}_$timePart"
         }
 
-        val dir = File(rootDir, folderName)
+        // Two recordings started in the same minute with the same title must not
+        // share a folder: the second would write over the first one's audio.
+        var dir = File(rootDir, folderName)
+        var n = 2
+        while (dir.exists() && !dir.listFiles().isNullOrEmpty()) {
+            dir = File(rootDir, "${folderName}_$n")
+            n++
+        }
         dir.mkdirs()
         return dir
     }

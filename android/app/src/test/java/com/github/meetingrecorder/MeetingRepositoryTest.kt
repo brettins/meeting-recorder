@@ -394,4 +394,13 @@ class MeetingRepositoryTest {
         val repo = MeetingRepository(File(tempDir.root, "nonexistent"))
         repo.recoverOrphanedRecordings() // must not throw
     }
+
+    @Test
+    fun `a second recording in the same minute gets its own folder`() {
+        val first = repo().createMeetingDir("Standup")
+        File(first, "recording.m4a").writeText("first")
+        val second = repo().createMeetingDir("Standup")
+        assertTrue(second.name != first.name)
+        assertEquals("first", File(first, "recording.m4a").readText())
+    }
 }
