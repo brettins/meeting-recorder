@@ -178,6 +178,17 @@ def test_processing_done_marks_job_done_and_adopts_paths(engine, tmp_path):
     assert job_id not in engine._processors
 
 
+def test_a_finished_job_is_listed_again_after_the_daemon_restarts(engine, tmp_path):
+    from meeting_recorder.core.job import JobStatus
+
+    a, t, n = _paths(tmp_path)
+    engine.import_existing(a, t, n, "r")
+    engine._test["launcher"].launches[0]["on_done"]([a, t, n])
+
+    restored = JobManager().load_persisted()
+    assert [(j.label, j.status) for j in restored] == [("r", JobStatus.DONE)]
+
+
 def test_cancel_job_kills_running_processor(engine, tmp_path):
     a, t, n = _paths(tmp_path)
     engine.import_existing(a, t, n, "r")

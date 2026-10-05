@@ -190,10 +190,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._output_box.append(self._open_folder_btn)
         vbox.append(self._output_box)
 
-        # The same row widget the Library uses, filtered to what is in flight —
-        # a recording being processed is a state of a meeting, not a second kind
-        # of list (see ui/meeting_row.py).
-        self._progress_clamp, progress_list = section_group("This session")
+        # The same row widget the Library uses — a recording being processed is a
+        # state of a meeting, not a second kind of list (see ui/meeting_row.py).
+        self._progress_clamp, progress_list = section_group("Recent")
         self._progress_clamp.set_visible(False)
         self._progress = RowListView(progress_list, on_action=self._on_progress_action)
         vbox.append(self._progress_clamp)
@@ -269,13 +268,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._sync_title_and_tags(snap)
 
     def _render_progress(self) -> None:
-        """Everything this session recorded, finished ones included.
-
-        A meeting that vanished the moment it finished left the tab you were
-        watching it on with nothing to show for it. The Library has it, but
-        that is not where you were looking.
-        """
-        models = [rm.row_from_job(j) for j in self._snapshot.jobs]
+        """In-flight jobs and the few recently finished ones the daemon still holds."""
+        models = rm.recent_rows(self._snapshot.jobs)
         self._progress.render(models, self._tag_colors())
         self._progress_clamp.set_visible(bool(models))
 

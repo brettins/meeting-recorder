@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from .job import JobStatus
 
@@ -170,6 +171,11 @@ def row_from_job(job) -> RowModel:
         error_msg=job.error_msg,
         actions=row_actions(state, FINISHED_ACTIONS if state == READY else ()),
     )
+
+
+def recent_rows(jobs: Iterable[Any]) -> list[RowModel]:
+    """The Record tab's rows, newest job first."""
+    return [row_from_job(job) for job in reversed(list(jobs))]
 
 
 def row_from_meeting(
