@@ -345,3 +345,33 @@ class TestSplitAction:
         meeting = make_meeting(has_audio=True)
         job = make_job(status=JobStatus.PROCESSING)
         assert rm.SPLIT not in rm.row_from_meeting(meeting, job).actions
+
+
+class TestFinishedWorkStaysOnScreen:
+    """A recording that vanishes the moment it finishes leaves nothing behind."""
+
+    def test_a_finished_job_is_ready_rather_than_gone(self):
+        assert rm.state_for_job(JobStatus.DONE) == rm.READY
+
+    def test_a_finished_job_still_makes_a_row(self):
+        job = make_job(status=JobStatus.DONE)
+        assert rm.row_from_job(job).job_id == job.job_id
+
+    def test_a_finished_job_offers_something_to_do(self):
+        # A row with no actions is a row with no reason to still be there.
+        actions = rm.row_from_job(make_job(status=JobStatus.DONE)).actions
+        assert rm.OPEN_FOLDER in actions
+        assert rm.DISMISS in actions
+
+    def test_a_processing_job_offers_only_cancel(self):
+        # A half-written folder must not be openable out from under ffmpeg.
+        assert rm.row_from_job(make_job()).actions == (rm.CANCEL,)
+
+
+class TestRecentRows:
+    def test_newest_job_comes_first(self):
+        first, second = make_job(job_id=1, status=JobStatus.DONE), make_job(job_id=2)
+        assert [r.job_id for r in rm.recent_rows([first, second])] == [2, 1]
+
+    def test_no_jobs_make_no_rows(self):
+        assert rm.recent_rows([]) == []

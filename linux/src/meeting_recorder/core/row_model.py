@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from .job import JobStatus
 
@@ -153,6 +154,11 @@ def index_jobs_by_dir(jobs: Iterable) -> dict[str, object]:
     return {job.audio_dir: job for job in jobs if getattr(job, "audio_dir", "")}
 
 
+# What a finished row on the Record tab offers. Opening the folder is the
+# reason to have kept it on screen; dismissing it is how it leaves.
+FINISHED_ACTIONS: tuple[str, ...] = (OPEN_FOLDER, DISMISS)
+
+
 def row_from_job(job) -> RowModel:
     """A Record-tab row built from a job alone — no folder scan involved."""
     state = state_for_job(job.status)
@@ -163,8 +169,13 @@ def row_from_job(job) -> RowModel:
         state=state,
         job_id=job.job_id,
         error_msg=job.error_msg,
-        actions=row_actions(state),
+        actions=row_actions(state, FINISHED_ACTIONS if state == READY else ()),
     )
+
+
+def recent_rows(jobs: Iterable[Any]) -> list[RowModel]:
+    """The Record tab's rows, newest job first."""
+    return [row_from_job(job) for job in reversed(list(jobs))]
 
 
 def row_from_meeting(
