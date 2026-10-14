@@ -8,6 +8,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk
 
 from .icons_model import (
+    MAESTRO_ICONS,
     NOTION_ICONS,
     SPLIT_ICONS,
     TAG_ICONS,
@@ -41,3 +42,8 @@ def notion_icon() -> str:
 def split_icon() -> str:
     """Icon for "split this recording into separate meetings"."""
     return pick_icon_name(SPLIT_ICONS, _has_icon)
+
+
+def maestro_icon() -> str:
+    """Icon for "file this into Maestro", distinct from the Notion one."""
+    return pick_icon_name(MAESTRO_ICONS, _has_icon)

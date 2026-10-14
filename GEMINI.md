@@ -113,6 +113,8 @@ Silence is stripped from a temporary copy before transcription, so long pauses d
 
 A finished meeting can be **filed into Notion** from its row in the library: notes become page blocks, the transcript is folded into a toggle, and the recording is attached to a `files` property. A Notion integration token belongs to one workspace, so `config.json` holds a list of workspaces and each token lives in the keyring under its own purpose. The picker opens on the pages already in the chosen database with the one dated the same day pre-selected, because filing almost always attaches to a meeting page that already exists; creating a page is a separate button. Filing runs in the window, not the daemon. See CLAUDE.md for the API details and the upload size limits.
 
+A meeting can be **filed into Maestro** from its library row: one `POST /api/meetings` (`services/maestro_service.py`, `processing/maestro_filing.py`) with the notes, transcript and action lines parsed by `processing/action_items.py`; Maestro makes a draft task in Sort per line. The address is the tailnet default; no URL or token is typed. The meeting id is the folder's start minute, kept in `meeting.json` so renames and re-filing update the same item. See CLAUDE.md.
+
 The Android app records in a foreground service so capture survives interruptions, warns (instead of transcribing) when the OS silences the mic mid-call, and keeps failed/crashed recordings in the library so they can be re-processed. Transcript and notes can be generated, or notes regenerated, directly from a meeting's detail screen, and external audio files can be imported via "Use Existing Recording."
 
 ## Building and Running

@@ -241,6 +241,19 @@ daemon if needed and opens a window. To run the pieces directly, use
 
 Mix and match freely — e.g. Whisper for transcription + Ollama for summarization runs fully offline with no API key.
 
+### Filing meetings into Maestro
+
+A finished meeting can be filed into Maestro, a personal work hub: the notes and the transcript land
+on one meeting item, and each action item in the notes becomes a draft task in Sort.
+
+There is nothing to set up. Maestro is reached over the tailnet, so the machine has to be on it; no
+URL or token is typed anywhere. Click the send icon on any meeting with notes or a transcript. The
+window lists the action lines it found (under an "Action items" or "Next steps" heading, plus any
+unticked checkbox) so you can untick any that should not become tasks. Filing the same meeting again
+updates it rather than adding a second one, and never rewrites a task that is already there. The
+audio is not sent. For development, `MAESTRO_URL` and `MAESTRO_API_TOKEN` override the address and
+add a token.
+
 ### First-Time Setup
 
 Open **Settings** (gear icon → **Preferences**, or the tray menu). The gear icon also has an **About Meeting Recorder** entry showing the app version and project links.
