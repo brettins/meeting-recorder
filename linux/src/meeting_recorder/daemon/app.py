@@ -184,17 +184,11 @@ class Daemon:
             logger.warning("Failed to start call detector: %s", exc)
 
     def _on_call_detected(self, source: str) -> None:
-        from ..core.state_machine import State
+        from ..ui.notifications import notify_with_actions
+        from ..utils.glib_bridge import idle_call
+        from .call_prompt import CallPrompt
 
-        if self._engine.state != State.IDLE:
-            logger.debug("Call detected but engine already active — suppressing notification")
-            return
-        from ..ui.notifications import notify
-
-        notify(
-            summary="Call Detected",
-            body="A call may have started. Open Meeting Recorder to start recording.",
-        )
+        CallPrompt(self._engine, notify_with_actions, idle_call).on_call_detected(source)
 
 
 def main() -> int:

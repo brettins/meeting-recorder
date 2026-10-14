@@ -118,7 +118,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "gemini_summarization_model": "gemini-flash-latest",
     "output_folder": DEFAULT_OUTPUT_FOLDER,
     "recording_quality": "high",
-    "call_detection_enabled": False,
+    "call_detection_enabled": True,
     "start_at_startup": False,
     "auto_title": True,
     "processing_countdown_enabled": False,

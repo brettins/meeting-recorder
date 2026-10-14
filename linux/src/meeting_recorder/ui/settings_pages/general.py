@@ -49,7 +49,7 @@ class GeneralPage:
                 "positives for other apps that use the microphone."
             ),
         )
-        self._detection_switch.set_active(self._cfg.get("call_detection_enabled", False))
+        self._detection_switch.set_active(self._cfg.get("call_detection_enabled", True))
         general.add(self._detection_switch)
 
         self._low_memory_switch = Adw.SwitchRow(
