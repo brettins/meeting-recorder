@@ -10,8 +10,16 @@ class _Proc:
         self._out = out
         self.returncode = code
 
-    def communicate(self):
+    def communicate(self, timeout=None):
+        if self._out is TimeoutError:
+            if timeout is not None:
+                self._out = ""
+                raise subprocess.TimeoutExpired("notify-send", timeout)
+        self.killed = getattr(self, "killed", False)
         return self._out, ""
+
+    def kill(self):
+        self.killed = True
 
 
 class _Inline:
@@ -53,3 +61,12 @@ def test_a_notify_send_without_actions_falls_back_to_a_plain_notification(monkey
     monkeypatch.setattr(notifications, "notify", lambda *args: plain.append(args))
     _cmd, chosen = _run(monkeypatch, "", code=1)
     assert chosen == [""] and plain and plain[0][0] == "Record this meeting?"
+
+
+def test_a_notification_the_server_never_closes_is_killed_and_reported(monkeypatch):
+    procs = []
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: procs.append(_Proc(TimeoutError)) or procs[-1])
+    monkeypatch.setattr(notifications.threading, "Thread", _Inline)
+    chosen = []
+    notifications.notify_with_actions("s", "b", [("record", "Record")], chosen.append)
+    assert procs[0].killed and chosen == [""]

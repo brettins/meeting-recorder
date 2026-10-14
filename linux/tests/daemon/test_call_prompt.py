@@ -73,3 +73,20 @@ def test_the_last_mode_chosen_is_offered_and_started():
     assert shown[0][2][0][1] == "Record (Speaker)"
     shown[0][3]("record")
     assert engine.started == ["speaker"]
+
+
+def test_a_failing_notifier_does_not_block_later_prompts():
+    calls = []
+
+    def notify(*args):
+        calls.append(args)
+        if len(calls) == 1:
+            raise OSError("no bus")
+
+    prompt = CallPrompt(FakeEngine(), notify, lambda func, *a: func(*a))
+    try:
+        prompt.on_call_detected("audio-stream")
+    except OSError:
+        pass
+    prompt.on_call_detected("audio-stream")
+    assert len(calls) == 2

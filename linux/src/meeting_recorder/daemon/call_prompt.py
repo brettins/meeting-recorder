@@ -36,12 +36,17 @@ class CallPrompt:
                 return
             self._pending = True
         mode = self._mode()
-        self._notify(
-            "Record this meeting?",
-            "A call may have started.",
-            [(RECORD, f"Record ({_LABELS[mode]})"), (NOT_NOW, "Not now")],
-            lambda name: self._on_done(name, mode),
-        )
+        try:
+            self._notify(
+                "Record this meeting?",
+                "A call may have started.",
+                [(RECORD, f"Record ({_LABELS[mode]})"), (NOT_NOW, "Not now")],
+                lambda name: self._on_done(name, mode),
+            )
+        except Exception:
+            with self._lock:
+                self._pending = False
+            raise
 
     def _mode(self) -> str:
         mode = getattr(self._engine, "last_mode", None)

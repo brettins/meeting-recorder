@@ -73,7 +73,14 @@ def notify_with_actions(
         chosen = ""
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-            out = (proc.communicate()[0] or "").strip()
+            try:
+                out = (proc.communicate(timeout=PROMPT_TIMEOUT_MS / 1000 + 30)[0] or "").strip()
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                logger.info("Notification outlived its timeout; closed it")
+                on_done("")
+                return
             if proc.returncode != 0:
                 logger.warning("notify-send exited %s with actions; showing a plain notification", proc.returncode)
                 notify(summary, f"{body} Open Meeting Recorder to start recording.", app_name, icon)
