@@ -189,7 +189,7 @@ Open **Settings** (gear icon → **Preferences**, or the tray menu). The gear ic
 |---|---|
 | Transcription service | Gemini (cloud), Whisper (local), or whisper.cpp (local, GPU) |
 | Summarization service | Gemini (cloud) or Ollama (local) |
-| Start at system startup | Launch the tray on login. On by default. Call detection also starts it at login, whatever this switch says |
+| Start at system startup | Launch the tray on login. On by default. Locked on while call detection is on. |
 | Enable call detection | On by default. When it hears a call, asks "Record this meeting?" with Record and Not now |
 | Low memory mode | Unload the window from memory when you close it (~20 MB vs. ~100 MB idle in the tray) at the cost of a brief delay when reopening. Off by default — enable on low-memory systems |
 | Output folder | Where recordings and notes are saved (default: `~/meetings`) |
