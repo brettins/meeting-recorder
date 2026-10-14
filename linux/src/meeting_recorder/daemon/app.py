@@ -16,7 +16,7 @@ from gi.repository import GLib
 from ..config import settings
 from ..core import commands
 from ..core.task_runner import TaskRunner
-from ..utils.autostart import migrate_autostart_entry
+from ..utils.autostart import migrate_autostart_entry, update_autostart, wants_autostart
 from ..utils.logging_setup import setup_logging
 from .dbus_service import EngineService
 from .engine import Engine
@@ -66,6 +66,8 @@ class Daemon:
         self._engine.restore_persisted_jobs()
 
         cfg = settings.load()
+        if wants_autostart(cfg):
+            update_autostart(True)
         if cfg.get("call_detection_enabled"):
             self._start_call_detector()
 
@@ -168,6 +170,8 @@ class Daemon:
 
     def _reload_config(self) -> None:
         cfg = settings.load()
+        if wants_autostart(cfg):
+            update_autostart(True)
         if cfg.get("call_detection_enabled") and self._call_detector is None:
             self._start_call_detector()
         elif not cfg.get("call_detection_enabled") and self._call_detector is not None:

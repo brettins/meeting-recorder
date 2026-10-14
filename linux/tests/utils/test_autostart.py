@@ -74,3 +74,27 @@ def test_custom_exec_path_migrated():
     contents = "[Desktop Entry]\nExec=/home/u/.local/bin/meeting-recorder\n"
     result = migrate_autostart_exec(contents)
     assert "Exec=/home/u/.local/bin/meeting-recorder --daemon" in result
+
+
+def test_call_detection_implies_autostart():
+    from meeting_recorder.utils.autostart import wants_autostart
+
+    assert wants_autostart({"call_detection_enabled": True, "start_at_startup": False})
+    assert wants_autostart({"call_detection_enabled": False, "start_at_startup": True})
+    assert not wants_autostart({"call_detection_enabled": False, "start_at_startup": False})
+
+
+def test_enabling_writes_a_daemon_entry(tmp_path, monkeypatch):
+    from meeting_recorder.utils import autostart
+
+    monkeypatch.setattr(autostart, "AUTOSTART_DIR", tmp_path / "autostart")
+    autostart.update_autostart(True)
+    written = (tmp_path / "autostart" / autostart.DESKTOP_FILENAME).read_text()
+    assert "--daemon" in written
+    assert autostart.is_autostart_enabled()
+
+
+def test_both_settings_default_on():
+    from meeting_recorder.config.defaults import DEFAULT_CONFIG
+
+    assert DEFAULT_CONFIG["start_at_startup"] and DEFAULT_CONFIG["call_detection_enabled"]

@@ -44,7 +44,7 @@ from ..services.whisper_cpp_service import (
     WhisperCppStatusChecker,
 )
 from ..services.whisper_service import WhisperDownloader, WhisperStatusChecker
-from ..utils.autostart import update_autostart
+from ..utils.autostart import update_autostart, wants_autostart
 from .settings_pages import GeneralPage, IdComboRow, ModelsPage, PromptsPage
 from .settings_visibility import compute_section_visibility
 
@@ -196,6 +196,6 @@ class SettingsDialog(Adw.Window):
             page.apply(cfg)
         try:
             self._store.save(cfg)
-            update_autostart(cfg["start_at_startup"])
+            update_autostart(wants_autostart(cfg))
         except Exception as exc:
             logger.error("Failed to save settings: %s", exc)

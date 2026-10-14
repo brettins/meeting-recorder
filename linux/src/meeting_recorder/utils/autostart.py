@@ -151,6 +151,11 @@ def update_autostart(enabled: bool) -> None:
                 logger.error("Failed to disable autostart: %s", exc)
 
 
+def wants_autostart(cfg: dict) -> bool:
+    """Whether the daemon should start at login: asked for, or needed by call detection."""
+    return bool(cfg.get("start_at_startup") or cfg.get("call_detection_enabled"))
+
+
 def is_autostart_enabled() -> bool:
     """Check if the autostart .desktop file exists."""
     return (AUTOSTART_DIR / DESKTOP_FILENAME).exists()
