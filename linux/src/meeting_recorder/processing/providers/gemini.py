@@ -65,7 +65,8 @@ def _require_text(response: Any, context: str) -> str:
             if "RECITATION" in str(getattr(finish_reason, "name", finish_reason)):
                 _truncation_error = RuntimeError(
                     f"Gemini's copyright filter blocked the {context}. It flagged part of the "
-                    "audio as copyrighted text, such as song lyrics or a passage read aloud. "
+                    f"{'audio' if context == 'transcription' else 'transcript'} as copyrighted "
+                    "text, such as song lyrics or a passage read aloud. "
                     "Try again; it does not always block the same audio."
                 )
             try:

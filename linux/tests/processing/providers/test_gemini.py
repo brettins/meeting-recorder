@@ -93,3 +93,18 @@ def test_recitation_says_the_copyright_filter_blocked_it(reason):
     with pytest.raises(RuntimeError, match="copyright filter blocked the transcription") as exc:
         _require_text(response, "transcription")
     assert "Try again" in str(exc.value)
+
+
+def test_recitation_from_the_real_enum_raises_even_with_partial_text():
+    pytest.importorskip("google.genai")
+    from google.genai import types
+
+    response = _response("partial…", finish_reason=types.FinishReason.RECITATION)
+    with pytest.raises(RuntimeError, match="part of the audio"):
+        _require_text(response, "transcription")
+
+
+def test_recitation_in_a_summary_names_the_transcript():
+    response = _response("", out_tokens=0, finish_reason="RECITATION")
+    with pytest.raises(RuntimeError, match="blocked the summarization. It flagged part of the transcript"):
+        _require_text(response, "summarization")
