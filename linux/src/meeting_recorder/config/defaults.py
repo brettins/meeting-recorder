@@ -118,8 +118,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "gemini_summarization_model": "gemini-flash-latest",
     "output_folder": DEFAULT_OUTPUT_FOLDER,
     "recording_quality": "high",
-    "call_detection_enabled": False,
-    "start_at_startup": False,
+    "call_detection_enabled": True,
+    "start_at_startup": True,
     "auto_title": True,
     "processing_countdown_enabled": False,
     # When True the window process exits on close (idle-in-tray ~20 MB) and the

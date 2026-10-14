@@ -16,7 +16,7 @@ from gi.repository import GLib
 from ..config import settings
 from ..core import commands
 from ..core.task_runner import TaskRunner
-from ..utils.autostart import migrate_autostart_entry
+from ..utils.autostart import migrate_autostart_entry, update_autostart, wants_autostart
 from ..utils.logging_setup import setup_logging
 from .dbus_service import EngineService
 from .engine import Engine
@@ -31,6 +31,7 @@ class Daemon:
         self._runner = TaskRunner()
         self._tray = None
         self._call_detector = None
+        self._call_prompt = None
 
         self._engine = Engine(
             self._runner,
@@ -66,6 +67,8 @@ class Daemon:
         self._engine.restore_persisted_jobs()
 
         cfg = settings.load()
+        if wants_autostart(cfg):
+            update_autostart(True)
         if cfg.get("call_detection_enabled"):
             self._start_call_detector()
 
@@ -168,6 +171,8 @@ class Daemon:
 
     def _reload_config(self) -> None:
         cfg = settings.load()
+        if wants_autostart(cfg):
+            update_autostart(True)
         if cfg.get("call_detection_enabled") and self._call_detector is None:
             self._start_call_detector()
         elif not cfg.get("call_detection_enabled") and self._call_detector is not None:
@@ -184,17 +189,13 @@ class Daemon:
             logger.warning("Failed to start call detector: %s", exc)
 
     def _on_call_detected(self, source: str) -> None:
-        from ..core.state_machine import State
+        if self._call_prompt is None:
+            from ..ui.notifications import notify_with_actions
+            from ..utils.glib_bridge import idle_call
+            from .call_prompt import CallPrompt
 
-        if self._engine.state != State.IDLE:
-            logger.debug("Call detected but engine already active — suppressing notification")
-            return
-        from ..ui.notifications import notify
-
-        notify(
-            summary="Call Detected",
-            body="A call may have started. Open Meeting Recorder to start recording.",
-        )
+            self._call_prompt = CallPrompt(self._engine, notify_with_actions, idle_call)
+        self._call_prompt.on_call_detected(source)
 
 
 def main() -> int:
