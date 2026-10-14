@@ -153,7 +153,10 @@ class Engine:
         if key_missing:
             self._emit_error(key_missing)
             return
+        self.last_mode = mode
         self._controller.start(cfg, mode, self._pending_title, self._pending_tags or None)
+
+    last_mode: str | None = None  # the mode of the last recording started this session
 
     def set_title(self, title: str | None) -> None:
         """Name the next recording, or retitle the running one.

@@ -67,8 +67,10 @@ class GeneralPage:
                 "positives for other apps that use the microphone."
             ),
         )
-        self._detection_switch.set_active(self._cfg.get("call_detection_enabled", False))
+        self._detection_switch.set_active(self._cfg.get("call_detection_enabled", True))
         general.add(self._detection_switch)
+        self._detection_switch.connect("notify::active", lambda *_: self._sync_startup_switch())
+        self._sync_startup_switch()
 
         self._low_memory_switch = Adw.SwitchRow(
             title="Low memory mode",
@@ -311,6 +313,14 @@ class GeneralPage:
     # ------------------------------------------------------------------
     # Save
     # ------------------------------------------------------------------
+
+    def _sync_startup_switch(self) -> None:
+        """Call detection needs the tray running at login, so it holds the startup switch on."""
+        needed = self._detection_switch.get_active()
+        if needed:
+            self._startup_switch.set_active(True)
+        self._startup_switch.set_sensitive(not needed)
+        self._startup_switch.set_subtitle("On while call detection is on." if needed else "")
 
     def apply(self, cfg: dict) -> None:
         """Write this tab's values into ``cfg`` (called by the dialog's save flow)."""

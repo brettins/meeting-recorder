@@ -275,6 +275,7 @@ def test_start_recording_starts_with_key(engine, monkeypatch):
     engine.set_title("Weekly sync")
     engine.start_recording("speaker")
     assert engine._test["ctrl"]["ctrl"].started_with == ("speaker", "Weekly sync")
+    assert engine.last_mode == "speaker"
 
 
 def _allow_start(monkeypatch):
