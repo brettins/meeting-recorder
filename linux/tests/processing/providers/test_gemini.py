@@ -85,3 +85,11 @@ def test_truncation_message_names_no_retired_models():
     for retired in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"):
         assert retired not in text, f"error text still recommends retired {retired}"
     assert "Settings" in text  # points somewhere the user can act
+
+
+@pytest.mark.parametrize("reason", ["RECITATION", SimpleNamespace(name="RECITATION")])
+def test_recitation_says_the_copyright_filter_blocked_it(reason):
+    response = _response("", out_tokens=0, finish_reason=reason)
+    with pytest.raises(RuntimeError, match="copyright filter blocked the transcription") as exc:
+        _require_text(response, "transcription")
+    assert "Try again" in str(exc.value)
