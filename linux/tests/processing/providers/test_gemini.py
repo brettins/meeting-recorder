@@ -85,3 +85,26 @@ def test_truncation_message_names_no_retired_models():
     for retired in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"):
         assert retired not in text, f"error text still recommends retired {retired}"
     assert "Settings" in text  # points somewhere the user can act
+
+
+@pytest.mark.parametrize("reason", ["RECITATION", SimpleNamespace(name="RECITATION")])
+def test_recitation_says_the_copyright_filter_blocked_it(reason):
+    response = _response("", out_tokens=0, finish_reason=reason)
+    with pytest.raises(RuntimeError, match="copyright filter blocked the transcription") as exc:
+        _require_text(response, "transcription")
+    assert "Try again" in str(exc.value)
+
+
+def test_recitation_with_the_sdk_enum_raises_even_with_partial_text():
+    pytest.importorskip("google.genai")
+    from google.genai import types
+
+    response = _response("partial…", finish_reason=types.FinishReason.RECITATION)
+    with pytest.raises(RuntimeError, match="part of the audio"):
+        _require_text(response, "transcription")
+
+
+def test_recitation_in_a_summary_names_the_transcript():
+    response = _response("", out_tokens=0, finish_reason="RECITATION")
+    with pytest.raises(RuntimeError, match="blocked the summary. It flagged part of the transcript"):
+        _require_text(response, "summarization")
