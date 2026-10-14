@@ -463,6 +463,12 @@ set -x KEY_PASSWORD your_key_pass
 
 ---
 
+### Filing into Maestro (Android)
+
+Open a meeting, choose **File into Maestro** from the three-dot menu, tick the action lines that
+should become draft tasks in Sort, and file. It needs nothing set up beyond the phone being on the
+tailnet. Filing again updates the same meeting.
+
 ## Development
 
 ### Repository layout
