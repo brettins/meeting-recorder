@@ -44,6 +44,9 @@ _TRANSCRIPTION_THINKING_BUDGET = 128
 _MAX_OUTPUT_TOKENS = 65_536
 
 
+_BLOCKED = {"transcription": ("transcription", "audio"), "summarization": ("summary", "transcript")}
+
+
 def _require_text(response: Any, context: str) -> str:
     """Extract text from a GenerateContentResponse, raising clearly if empty or truncated."""
     # Log token usage and finish_reason for diagnostics
@@ -63,10 +66,11 @@ def _require_text(response: Any, context: str) -> str:
             finish_reason = getattr(candidate, "finish_reason", None)
             logger.info("%s finish_reason: %s", context, finish_reason)
             if "RECITATION" in str(getattr(finish_reason, "name", finish_reason)):
+                step, source = _BLOCKED.get(context, (context, "transcript"))
                 _truncation_error = RuntimeError(
-                    f"Gemini's copyright filter blocked the {context}. It flagged part of the "
-                    "audio as copyrighted text, such as song lyrics or a passage read aloud. "
-                    "Try again; it does not always block the same audio."
+                    f"Gemini's copyright filter blocked the {step}. It flagged part of the "
+                    f"{source} as copyrighted text, such as song lyrics or a passage read aloud. "
+                    f"Try again; it does not always block the same {source}."
                 )
             try:
                 from google.genai import types
