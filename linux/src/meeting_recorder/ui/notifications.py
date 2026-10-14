@@ -39,22 +39,29 @@ def notify(
         logger.warning("Failed to send notification: %s", exc)
 
 
+PROMPT_TIMEOUT_MS = 10 * 60 * 1000
+
+
 def notify_with_actions(
     summary: str,
     body: str,
     actions: Sequence[tuple[str, str]],
-    on_action: Callable[[str], None],
+    on_done: Callable[[str], None],
     app_name: str = "Meeting Recorder",
     icon: str = "meeting-recorder",
 ) -> None:
-    """Show a silent, resident notification with (name, label) buttons; call on_action(name) on a click."""
+    """Show a silent notification with (name, label) buttons; call on_done(name) when it ends.
+
+    on_done gets the clicked action's name, or "" if it was dismissed, expired or failed. When
+    notify-send rejects --action (libnotify before 0.8) a plain notification is shown instead.
+    """
     cmd = [
         "notify-send",
         "--app-name",
         app_name,
         "--icon",
         icon,
-        "--expire-time=0",
+        f"--expire-time={PROMPT_TIMEOUT_MS}",
         "--hint=boolean:resident:true",
         "--hint=boolean:suppress-sound:true",
     ]
@@ -63,16 +70,19 @@ def notify_with_actions(
     cmd += [summary, body]
 
     def _wait() -> None:
+        chosen = ""
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-            chosen = (proc.communicate()[0] or "").strip()
+            out = (proc.communicate()[0] or "").strip()
+            if proc.returncode != 0:
+                logger.warning("notify-send exited %s with actions; showing a plain notification", proc.returncode)
+                notify(summary, f"{body} Open Meeting Recorder to start recording.", app_name, icon)
+            elif out in {name for name, _ in actions}:
+                chosen = out
         except FileNotFoundError:
             logger.warning("notify-send not found; notifications unavailable")
-            return
         except Exception as exc:
             logger.warning("Failed to send notification: %s", exc)
-            return
-        if chosen in {name for name, _ in actions}:
-            on_action(chosen)
+        on_done(chosen)
 
     threading.Thread(target=_wait, name="notify-actions", daemon=True).start()

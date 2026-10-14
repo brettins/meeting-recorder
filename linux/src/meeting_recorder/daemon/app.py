@@ -31,6 +31,7 @@ class Daemon:
         self._runner = TaskRunner()
         self._tray = None
         self._call_detector = None
+        self._call_prompt = None
 
         self._engine = Engine(
             self._runner,
@@ -188,11 +189,13 @@ class Daemon:
             logger.warning("Failed to start call detector: %s", exc)
 
     def _on_call_detected(self, source: str) -> None:
-        from ..ui.notifications import notify_with_actions
-        from ..utils.glib_bridge import idle_call
-        from .call_prompt import CallPrompt
+        if self._call_prompt is None:
+            from ..ui.notifications import notify_with_actions
+            from ..utils.glib_bridge import idle_call
+            from .call_prompt import CallPrompt
 
-        CallPrompt(self._engine, notify_with_actions, idle_call).on_call_detected(source)
+            self._call_prompt = CallPrompt(self._engine, notify_with_actions, idle_call)
+        self._call_prompt.on_call_detected(source)
 
 
 def main() -> int:

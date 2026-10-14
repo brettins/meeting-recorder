@@ -25,7 +25,7 @@ def test_idle_offers_record_and_not_now():
     prompt.on_call_detected("audio-stream")
     summary, _body, actions, _cb = shown[0]
     assert summary == "Record this meeting?"
-    assert [label for _name, label in actions] == ["Record", "Not now"]
+    assert [label for _name, label in actions] == ["Record (Headphones)", "Not now"]
 
 
 def test_active_engine_stays_silent():
@@ -53,3 +53,23 @@ def test_not_now_starts_nothing():
 
 def test_call_detection_is_on_by_default():
     assert DEFAULT_CONFIG["call_detection_enabled"] is True
+
+
+def test_one_prompt_at_a_time_until_it_ends():
+    prompt, shown = _prompt(FakeEngine())
+    prompt.on_call_detected("audio-stream")
+    prompt.on_call_detected("audio-stream")
+    assert len(shown) == 1
+    shown[0][3]("")
+    prompt.on_call_detected("audio-stream")
+    assert len(shown) == 2
+
+
+def test_the_last_mode_chosen_is_offered_and_started():
+    engine = FakeEngine()
+    engine.last_mode = "speaker"
+    prompt, shown = _prompt(engine)
+    prompt.on_call_detected("audio-stream")
+    assert shown[0][2][0][1] == "Record (Speaker)"
+    shown[0][3]("record")
+    assert engine.started == ["speaker"]

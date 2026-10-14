@@ -27,7 +27,7 @@ This repository is a monorepo with two independent apps — a Linux desktop appl
 - **Lightweight background daemon** — the app runs as a small GTK-free tray daemon, so recording, transcription, and model installs keep running in the background even with no window open. Closing the window returns to the tray; reopening (tray "Open" or the app icon) shows the current state (an in-progress model install still shows its progress).
 - **Low memory mode** — by default the window stays loaded in the background so reopening is instant; enable Low memory mode (Settings → General) to unload it on close instead, so the tray daemon idles at roughly a fifth of the memory at the cost of a brief delay when you reopen
 - **Call detection** — optionally monitor for active calls and get notified to start recording
-- **Start at system startup** — optionally launch the tray daemon automatically on login
+- **Start at system startup** — launch the tray on login (on by default)
 
 ### Output Structure
 
@@ -189,8 +189,8 @@ Open **Settings** (gear icon → **Preferences**, or the tray menu). The gear ic
 |---|---|
 | Transcription service | Gemini (cloud), Whisper (local), or whisper.cpp (local, GPU) |
 | Summarization service | Gemini (cloud) or Ollama (local) |
-| Start at system startup | Launch the tray daemon on login. On by default, and kept on while call detection is on |
-| Enable call detection | On by default. Watches for a call and shows "Record this meeting?" with Record and Not now buttons |
+| Start at system startup | Launch the tray on login. On by default. Call detection also starts it at login, whatever this switch says |
+| Enable call detection | On by default. When it hears a call, asks "Record this meeting?" with Record and Not now |
 | Low memory mode | Unload the window from memory when you close it (~20 MB vs. ~100 MB idle in the tray) at the cost of a brief delay when reopening. Off by default — enable on low-memory systems |
 | Output folder | Where recordings and notes are saved (default: `~/meetings`) |
 | Recording quality | Audio bitrate preset (Very High / High / Medium / Low) |
