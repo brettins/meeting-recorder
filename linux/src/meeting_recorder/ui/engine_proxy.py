@@ -116,8 +116,9 @@ class EngineProxy:
                 conn.call_finish(result)
             except GLib.Error as exc:
                 logger.error("Engine.%s failed: %s", method, exc)
-            if on_done is not None:
-                on_done()
+            finally:
+                if on_done is not None:
+                    on_done()
 
         self._conn.call(
             ENGINE_NAME,

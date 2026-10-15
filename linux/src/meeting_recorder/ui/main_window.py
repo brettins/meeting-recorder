@@ -49,7 +49,7 @@ from ..core.controls import (
     controls_for_state,
     title_editable,
 )
-from ..core.edit_sync import remote_tags_to_show, remote_title_to_show
+from ..core.edit_sync import EditTracker, remote_tags_to_show, remote_title_to_show
 from ..core.errors import error_presentation
 from ..core.window_close import CLOSE_HIDE, resolve_close_action
 from ..core.wire import Snapshot, snapshot_from_json
@@ -92,10 +92,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._recording_mode: str = "headphones"
         self._snapshot = Snapshot()
         # Guards the title entry against re-emitting "changed" while a snapshot
-        # is being rendered into it. _unacked_edits counts title/tag edits the
-        # daemon has not replied to yet (see core/edit_sync.py).
+        # is being rendered into it. _edits counts title/tag edits the daemon has not replied to.
         self._syncing = False
-        self._unacked_edits = 0
+        self._edits = EditTracker()
 
         self._build_ui()
         # Paint the current daemon state immediately, then live-update on signals.
@@ -414,17 +413,11 @@ class MainWindow(Adw.ApplicationWindow):
         self._send_edit(self._engine.set_title, self._title_entry.get_text().strip())
 
     def _send_edit(self, send, value) -> None:
-        self._unacked_edits += 1
-        send(value, self._edit_acknowledged)
-
-    def _edit_acknowledged(self) -> None:
-        self._unacked_edits = max(self._unacked_edits - 1, 0)
-        if self._unacked_edits == 0:
-            self._sync_title_and_tags(self._snapshot)
+        self._edits.send(send, value, lambda: self._sync_title_and_tags(self._snapshot))
 
     def _sync_title_and_tags(self, snap: Snapshot) -> None:
         """Render the daemon's title/tags, but never over an edit it has not seen yet."""
-        shown = remote_title_to_show(self._title_entry.get_text(), snap.title, self._unacked_edits)
+        shown = remote_title_to_show(self._title_entry.get_text(), snap.title, self._edits.pending)
         if shown is not None:
             self._syncing = True
             try:
@@ -432,7 +425,7 @@ class MainWindow(Adw.ApplicationWindow):
             finally:
                 self._syncing = False
 
-        shown_tags = remote_tags_to_show(self._tags, snap.tags, self._unacked_edits)
+        shown_tags = remote_tags_to_show(self._tags, snap.tags, self._edits.pending)
         if shown_tags is not None:
             self._tags = shown_tags
             self._render_tag_chips()

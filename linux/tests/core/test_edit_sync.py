@@ -1,8 +1,14 @@
-"""Tests for the rule that keeps daemon snapshots from overwriting what the user is typing."""
+"""Tests for core/edit_sync.py."""
 
 from __future__ import annotations
 
-from meeting_recorder.core.edit_sync import remote_tags_to_show, remote_title_to_show
+import pytest
+
+from meeting_recorder.core.edit_sync import (
+    EditTracker,
+    remote_tags_to_show,
+    remote_title_to_show,
+)
 
 
 def test_nothing_is_overwritten_while_an_edit_is_unacknowledged():
@@ -55,3 +61,40 @@ def test_typing_then_backspacing_through_late_echoes_keeps_the_final_text():
 
 def test_a_typed_space_survives_the_daemon_stripping_it():
     assert _type_through_a_laggy_daemon(["f", "o", "o", " "]) == "foo "
+
+
+def test_tracker_settles_once_the_last_reply_arrives():
+    tracker = EditTracker()
+    replies = []
+    settled = []
+
+    for value in ("a", "ab"):
+        tracker.send(lambda v, done: replies.append(done), value, lambda: settled.append(1))
+    assert tracker.pending == 2
+
+    replies[0]()
+    assert tracker.pending == 1 and settled == []
+    replies[1]()
+    assert tracker.pending == 0 and settled == [1]
+
+
+def test_tracker_does_not_stick_when_sending_fails():
+    tracker = EditTracker()
+
+    def failing(_value, _done):
+        raise ValueError("cannot build the call")
+
+    with pytest.raises(ValueError):
+        tracker.send(failing, "a", lambda: None)
+
+    assert tracker.pending == 0
+    assert remote_title_to_show("a", "", tracker.pending) == ""
+
+
+def test_tracker_ignores_a_reply_it_was_not_waiting_for():
+    tracker = EditTracker()
+    replies = []
+    tracker.send(lambda v, done: replies.append(done), "a", lambda: None)
+    replies[0]()
+    replies[0]()
+    assert tracker.pending == 0
