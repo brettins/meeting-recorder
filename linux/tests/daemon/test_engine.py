@@ -517,3 +517,14 @@ class TestAutoStopNotices:
         self._notified(monkeypatch)
         engine._apply_auto_notice("stop", "No sound for 30 minutes.")
         assert engine._test["ctrl"]["ctrl"].calls[0][1] is False
+
+
+def test_a_failed_job_drops_off_the_snapshot_once_its_meeting_has_a_transcript(engine, tmp_path):
+    a, t, n = _paths(tmp_path)
+    engine.import_existing(a, t, n, "Travel")
+    engine._test["launcher"].launches[0]["on_error"]("Gemini returned no text")
+    assert [j["status"] for j in json.loads(engine.snapshot_json())["jobs"]] == ["error"]
+
+    Path(t).write_text("[00:00:01] **A:** hi")
+
+    assert json.loads(engine.snapshot_json())["jobs"] == []

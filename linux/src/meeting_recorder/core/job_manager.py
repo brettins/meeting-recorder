@@ -61,14 +61,46 @@ def finished_to_keep(jobs: Iterable[Job], now: float) -> list[Job]:
     return finished[:KEEP_FINISHED]
 
 
+# File times come from a coarser clock than time.time().
+MTIME_SLACK_SECONDS = 2.0
+
+
+def _started_at(job: Job) -> float | None:
+    """Job start time; the audio file's mtime for jobs saved without one."""
+    if job.started_at is not None:
+        return job.started_at
+    try:
+        return job.audio_path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _resolved_by_transcript(job: Job) -> bool:
+    """A failed job whose meeting has a non-empty transcript.md written since the job began."""
+    if job.status is not JobStatus.ERROR or job.cancelled:
+        return False
+    started = _started_at(job)
+    if started is None:
+        return False
+    try:
+        info = job.transcript_path.stat()
+    except OSError:
+        return False
+    return info.st_size > 0 and info.st_mtime >= started - MTIME_SLACK_SECONDS
+
+
 def _default_state_dir() -> Path:
     base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
     return Path(base) / "meeting-recorder"
 
 
-def _finished_at(entry: Mapping[str, object]) -> float | None:
-    value = entry.get("finished_at")
+def _number(entry: Mapping[str, object], key: str) -> float | None:
+    value = entry.get(key)
     return float(value) if isinstance(value, (int, float)) else None
+
+
+def _finished_at(entry: Mapping[str, object]) -> float | None:
+    return _number(entry, "finished_at")
 
 
 class JobManager:
@@ -102,6 +134,7 @@ class JobManager:
             transcript_path=transcript_path,
             notes_path=notes_path,
             label=label,
+            started_at=self._clock(),
         )
         self.add(job)
         return job
@@ -132,7 +165,17 @@ class JobManager:
         job.status = JobStatus.PROCESSING
         job.error_msg = None
         job.finished_at = None
+        job.started_at = self._clock()
         self._persist()
+
+    def drop_resolved_errors(self) -> list[Job]:
+        """Remove failed jobs whose transcript.md was written since the job began; return them."""
+        resolved = [j for j in self._jobs if _resolved_by_transcript(j)]
+        for job in resolved:
+            self._jobs.remove(job)
+        if resolved:
+            self._persist()
+        return resolved
 
     def persist(self) -> None:
         """Explicit persistence hook (e.g. after path updates from auto-title)."""
@@ -177,6 +220,7 @@ class JobManager:
                     status=status,
                     error_msg=forced_msg or entry.get("error_msg"),
                     finished_at=_finished_at(entry) if status is JobStatus.DONE else None,
+                    started_at=_number(entry, "started_at"),
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 logger.warning("Skipping malformed persisted job %r: %s", entry, exc)
@@ -218,6 +262,7 @@ class JobManager:
                         "status": j.status.value,
                         "error_msg": j.error_msg,
                         "finished_at": j.finished_at,
+                        "started_at": j.started_at,
                     }
                     for j in self._jobs
                     if not j.cancelled

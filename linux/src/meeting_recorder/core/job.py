@@ -37,6 +37,7 @@ class Job:
     error_msg: str | None = None
     cancelled: bool = False
     finished_at: float | None = None
+    started_at: float | None = None
     # Cooperative cancellation for the pipeline worker: checked between
     # stages so a cancelled job stops instead of burning API quota.
     token: CancelToken = field(default_factory=CancelToken)
