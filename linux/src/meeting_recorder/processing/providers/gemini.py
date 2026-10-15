@@ -7,6 +7,7 @@ transcription and summarization prompts with appropriate model configurations.
 from __future__ import annotations
 
 import logging
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,17 @@ from ...config.defaults import (
     SUMMARIZATION_PROMPT,
 )
 from ...core.retry import retry_on_transient
+from ...services.recording_splitter import _run as run_command
+from ..audio_parts import (
+    blocked_note,
+    extract_parts,
+    named_speakers,
+    part_prompt,
+    plan_parts,
+    shift_timestamps,
+    strip_preamble,
+)
+from ..upload_audio import probe_duration
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +56,23 @@ _TRANSCRIPTION_THINKING_BUDGET = 128
 _MAX_OUTPUT_TOKENS = 65_536
 
 
+_PART_ATTEMPTS = 3
+
+# Bounds on the Files API calls, which otherwise wait forever on a dead connection.
+_FILE_CALL_TIMEOUT_MS = 60_000
+
+
+class RecitationBlocked(RuntimeError):
+    """Gemini's copyright filter refused to return the text."""
+
+
 _BLOCKED = {"transcription": ("transcription", "audio"), "summarization": ("summary", "transcript")}
 
 
 def _require_text(response: Any, context: str) -> str:
     """Extract text from a GenerateContentResponse, raising clearly if empty or truncated."""
     # Log token usage and finish_reason for diagnostics
-    _truncation_error = None
+    _truncation_error: RuntimeError | None = None
     try:
         usage = getattr(response, "usage_metadata", None)
         if usage:
@@ -67,7 +89,7 @@ def _require_text(response: Any, context: str) -> str:
             logger.info("%s finish_reason: %s", context, finish_reason)
             if "RECITATION" in str(getattr(finish_reason, "name", finish_reason)):
                 step, source = _BLOCKED.get(context, (context, "transcript"))
-                _truncation_error = RuntimeError(
+                _truncation_error = RecitationBlocked(
                     f"Gemini's copyright filter blocked the {step}. It flagged part of the "
                     f"{source} as copyrighted text, such as song lyrics or a passage read aloud. "
                     f"Try again; it does not always block the same {source}."
@@ -154,7 +176,70 @@ class GeminiProvider:
         audio_path: Path,
         on_status: Callable[[str], None] | None = None,
     ) -> str:
-        """Transcribe audio file using Gemini Files API."""
+        """Transcribe an audio file, in parts when it is long."""
+        parts = plan_parts(probe_duration(audio_path, run_command))
+        if len(parts) < 2:
+            return self._transcribe_file(audio_path, self._transcription_prompt, on_status)
+
+        with tempfile.TemporaryDirectory(prefix="meeting-parts-") as scratch:
+            try:
+                files = extract_parts(audio_path, parts, Path(scratch), run_command)
+            except Exception as exc:
+                logger.warning("Could not cut %s into parts (%s); sending whole", audio_path, exc)
+                return self._transcribe_file(audio_path, self._transcription_prompt, on_status)
+
+            segments: list[str] = []
+            speakers: list[str] = []
+            last_error: RecitationBlocked | None = None
+            transcribed = 0
+            for index, (part, path) in enumerate(zip(parts, files, strict=True), 1):
+                label = f"Part {index} of {len(parts)}"
+
+                def part_status(message: str, label: str = label) -> None:
+                    if on_status:
+                        on_status(f"{label}: {message}")
+
+                prompt = part_prompt(self._transcription_prompt, index, len(parts), speakers)
+                try:
+                    text = self._transcribe_with_retries(path, prompt, label, part_status)
+                except RecitationBlocked as exc:
+                    last_error = exc
+                    logger.warning("%s stayed blocked by the copyright filter", label)
+                    segments.append(blocked_note(part))
+                    continue
+                text = shift_timestamps(strip_preamble(text), part.start)
+                speakers = [*speakers, *(n for n in named_speakers(text) if n not in speakers)]
+                segments.append(text)
+                transcribed += 1
+
+        if last_error is not None and not transcribed:
+            raise last_error
+        return "\n\n".join(segments)
+
+    def _transcribe_with_retries(
+        self,
+        path: Path,
+        prompt: str,
+        label: str,
+        on_status: Callable[[str], None],
+    ) -> str:
+        """Transcribe one part, asking again when the copyright filter blocks it."""
+        for attempt in range(1, _PART_ATTEMPTS + 1):
+            try:
+                return self._transcribe_file(path, prompt, on_status)
+            except RecitationBlocked:
+                if attempt == _PART_ATTEMPTS:
+                    raise
+                logger.warning("%s blocked by the copyright filter (attempt %d)", label, attempt)
+        raise AssertionError("unreachable")
+
+    def _transcribe_file(
+        self,
+        audio_path: Path,
+        prompt: str,
+        on_status: Callable[[str], None] | None,
+    ) -> str:
+        """Upload one audio file to the Gemini Files API and transcribe it."""
         client = self._get_client()
 
         if on_status:
@@ -166,35 +251,53 @@ class GeminiProvider:
                 file=str(audio_path),
                 # mime_type must be specified explicitly; the SDK does not infer it from
                 # the file extension for audio files, and omitting it causes a 400 error.
-                config={"mime_type": "audio/mpeg"},
+                config={
+                    "mime_type": "audio/mpeg",
+                    "http_options": {"timeout": self._generate_timeout_ms},
+                },
             ),
             description="Gemini file upload",
         )
 
-        # After upload, Google's servers transcode and analyse the audio. The file
-        # state transitions PROCESSING → ACTIVE before it can be referenced in prompts.
-        uploaded = self._wait_for_active(client, uploaded, on_status)
-
-        if on_status:
-            on_status("Transcribing with Gemini…")
-
         try:
-            response = retry_on_transient(
-                lambda: client.models.generate_content(
-                    model=self._model,
-                    contents=[uploaded, self._transcription_prompt],
-                    config={
-                        "temperature": _TRANSCRIPTION_TEMPERATURE,
-                        "max_output_tokens": _MAX_OUTPUT_TOKENS,
-                        "thinking_config": {"thinking_budget": _TRANSCRIPTION_THINKING_BUDGET},
-                        "http_options": {"timeout": self._generate_timeout_ms},
-                    },
-                ),
-                description="Gemini transcription",
+            # After upload, Google's servers transcode and analyse the audio. The file
+            # state transitions PROCESSING → ACTIVE before it can be referenced in prompts.
+            uploaded = self._wait_for_active(client, uploaded, on_status)
+
+            if on_status:
+                on_status("Transcribing with Gemini…")
+
+            try:
+                response = retry_on_transient(
+                    lambda: client.models.generate_content(
+                        model=self._model,
+                        contents=[uploaded, prompt],
+                        config={
+                            "temperature": _TRANSCRIPTION_TEMPERATURE,
+                            "max_output_tokens": _MAX_OUTPUT_TOKENS,
+                            "thinking_config": {"thinking_budget": _TRANSCRIPTION_THINKING_BUDGET},
+                            "http_options": {"timeout": self._generate_timeout_ms},
+                        },
+                    ),
+                    description="Gemini transcription",
+                )
+            except Exception as exc:
+                raise _wrap_timeout(exc, "transcription", self._generate_timeout_ms) from exc
+            return _require_text(response, "transcription")
+        finally:
+            self._delete_remote(client, uploaded)
+
+    def _delete_remote(self, client: Any, file_obj: Any) -> None:
+        """Remove an uploaded file from the Files API; failure only costs storage."""
+        name = getattr(file_obj, "name", None)
+        if not name:
+            return
+        try:
+            client.files.delete(
+                name=name, config={"http_options": {"timeout": _FILE_CALL_TIMEOUT_MS}}
             )
         except Exception as exc:
-            raise _wrap_timeout(exc, "transcription", self._generate_timeout_ms) from exc
-        return _require_text(response, "transcription")
+            logger.debug("Could not delete %s from Gemini: %s", name, exc)
 
     # ------------------------------------------------------------------
     # Summarization
@@ -259,4 +362,7 @@ class GeminiProvider:
                 on_status(f"Waiting for Gemini to process audio… ({state_label})")
 
             time.sleep(_POLL_INTERVAL)
-            file_obj = client.files.get(name=file_obj.name)
+            file_obj = client.files.get(
+                name=file_obj.name,
+                config={"http_options": {"timeout": _FILE_CALL_TIMEOUT_MS}},
+            )
