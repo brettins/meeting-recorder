@@ -86,6 +86,12 @@ your recording is never modified. A real example: an 18-minute standup was sent 
 
 Turn it off with **Remove silence before transcribing** in Settings → General.
 
+### Long recordings are transcribed in parts
+
+A recording over 20 minutes is sent to Gemini in 15-minute parts and joined into one transcript. If Gemini's
+copyright filter blocks a part, that part is retried, and if it stays blocked the transcript carries a note
+saying which stretch is missing instead of the whole job failing.
+
 ### Splitting a long recording
 
 A recorder left running overnight ends up holding several meetings with dead hours between

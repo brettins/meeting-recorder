@@ -32,11 +32,16 @@ class _Inline:
 
 def _run(monkeypatch, out, code=0):
     calls = []
-    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: calls.append(cmd) or _Proc(out, code))
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda cmd, **kw: calls.append(cmd) or _Proc(out, code)
+    )
     monkeypatch.setattr(notifications.threading, "Thread", _Inline)
     chosen = []
     notifications.notify_with_actions(
-        "Record this meeting?", "body", [("record", "Record"), ("not-now", "Not now")], chosen.append
+        "Record this meeting?",
+        "body",
+        [("record", "Record"), ("not-now", "Not now")],
+        chosen.append,
     )
     return calls[0], chosen
 
@@ -65,7 +70,9 @@ def test_a_notify_send_without_actions_falls_back_to_a_plain_notification(monkey
 
 def test_a_notification_the_server_never_closes_is_killed_and_reported(monkeypatch):
     procs = []
-    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: procs.append(_Proc(TimeoutError)) or procs[-1])
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda cmd, **kw: procs.append(_Proc(TimeoutError)) or procs[-1]
+    )
     monkeypatch.setattr(notifications.threading, "Thread", _Inline)
     chosen = []
     notifications.notify_with_actions("s", "b", [("record", "Record")], chosen.append)

@@ -25,6 +25,11 @@ def icon_for_state(recording_state: str, jobs: list) -> str:
     return "meeting-recorder"
 
 
+def tray_signature(recording_state: str, jobs: list) -> tuple:
+    """What the tray shows for a state; equal signatures render identically."""
+    return (recording_state, tuple(label for label, _cancel_fn in jobs))
+
+
 def build_menu_model(recording_state: str, jobs: list) -> list[dict]:
     """Build the tray menu as a flat list of item descriptors.
 
