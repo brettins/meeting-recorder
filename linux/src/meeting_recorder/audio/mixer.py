@@ -8,6 +8,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..core.auto_stop import SILENCE_DETECT_SECONDS, SILENCE_THRESHOLD_DB
+
+
+def silencedetect_filter() -> str:
+    """The pass-through filter that makes ffmpeg report quiet stretches.
+
+    silencedetect changes nothing about the audio; it only logs
+    ``silence_start`` / ``silence_end`` lines, which the recorder reads to feed
+    the silence warning. It is placed last so it sees what is actually written
+    to the file — mic and system audio mixed, which is what "no sound at all"
+    has to mean.
+    """
+    return f"silencedetect=n={SILENCE_THRESHOLD_DB}dB:d={SILENCE_DETECT_SECONDS}"
+
 
 def build_ffmpeg_command(
     source: str,
@@ -29,12 +43,15 @@ def build_ffmpeg_command(
     # No denoiser: afftdn/anlmdn are both too slow for real-time use and cause
     # the input thread queue to fill, making ffmpeg drop packets and produce a
     # file shorter than the wall-clock recording duration.
-    filter_str = "[0:a]highpass=f=80[mic];[mic][1:a]amerge=inputs=2[out]"
+    filter_str = f"[0:a]highpass=f=80[mic];[mic][1:a]amerge=inputs=2,{silencedetect_filter()}[out]"
     return [
         "ffmpeg",
         "-hide_banner",
+        # silencedetect reports at info level; -nostats keeps the once-a-second
+        # progress line out of the stderr the recorder reads.
         "-loglevel",
-        "error",
+        "info",
+        "-nostats",
         "-y",
         # thread_queue_size buffers packets between the PulseAudio input thread and
         # the filter/encode thread. Without it the queue fills up and ffmpeg silently
@@ -76,8 +93,11 @@ def build_ffmpeg_command_mic_only(
     return [
         "ffmpeg",
         "-hide_banner",
+        # silencedetect reports at info level; -nostats keeps the once-a-second
+        # progress line out of the stderr the recorder reads.
         "-loglevel",
-        "error",
+        "info",
+        "-nostats",
         "-y",
         "-thread_queue_size",
         "4096",
@@ -86,7 +106,7 @@ def build_ffmpeg_command_mic_only(
         "-i",
         source,
         "-af",
-        "highpass=f=80",
+        f"highpass=f=80,{silencedetect_filter()}",
         "-acodec",
         "libmp3lame",
         "-q:a",

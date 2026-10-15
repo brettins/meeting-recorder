@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 APP_ID = "io.github.dipakmdhrm.MeetingRecorder"
-APP_NAME = "Meeting Recorder"
+APP_NAME = "Brett's Meeting Recorder"
 CONFIG_DIR = "~/.config/meeting-recorder"
 CONFIG_FILE = "~/.config/meeting-recorder/config.json"
 DEFAULT_OUTPUT_FOLDER = "~/meetings"
@@ -122,6 +122,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "start_at_startup": True,
     "auto_title": True,
     "processing_countdown_enabled": False,
+    # Auto-stop guards. See core/auto_stop.py: the cap stops outright, silence
+    # escalates through a nudge and a warning first. 0 disables either.
+    "max_recording_minutes": 180,
+    "silence_auto_stop_enabled": True,
+    "silence_grace_minutes": 60,
+    "silence_nudge_minutes": 10,
+    "silence_stop_minutes": 30,
+    "silence_warn_lead_minutes": 5,
+    # Strip long silences from a temporary copy before transcribing. The
+    # recording in the library is never modified. 0 minutes = always trim.
+    "trim_silence_before_upload": True,
+    "trim_min_saving_minutes": 5,
     # When True the window process exits on close (idle-in-tray ~20 MB) and the
     # daemon respawns a fresh window on demand, costing a cold-start delay on
     # every reopen. Default off keeps the window resident (hidden) on close so
@@ -139,6 +151,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # by clearing the field, without needing a separate "use default" flag.
     # Tag registry: [{"name": ..., "color": <palette name>}, ...]. See config/tags.py.
     "tags": [],
+    # Notion workspaces to file meetings into. Each entry is
+    # {"id", "name", "database_id", "files_property"}; the integration token
+    # for each lives in the keyring, never here. See config/notion_config.py.
+    # settings.load() only keeps keys present here, so a key missing from this
+    # dict is silently dropped on every read.
+    "notion_workspaces": [],
     "transcription_prompt": "",
     "summarization_prompt": "",
     "title_prompt": "",

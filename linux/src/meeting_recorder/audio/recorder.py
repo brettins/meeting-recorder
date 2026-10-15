@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .devices import get_default_sink, get_default_source, get_monitor_source
 from .mixer import build_ffmpeg_command, build_ffmpeg_command_mic_only
+from .silence_events import SILENCE_START, parse_silence_event
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +48,17 @@ class Recorder:
         quality: str = "2",
         on_tick: Callable[[int], None] | None = None,
         on_error: Callable[[str], None] | None = None,
+        on_silence: Callable[[bool], None] | None = None,
     ) -> None:
         self._output_path = output_path
         self._mode = mode  # "headphones" = mic + monitor; "speaker" = mic only
         self._quality = quality
         self._on_tick = on_tick
         self._on_error = on_error
+        # Called True when a quiet stretch begins and False when sound returns.
+        # Fired from the stderr drain thread, like on_error.
+        self._on_silence = on_silence
+        self._silent = False
 
         self._ffmpeg: subprocess.Popen[bytes] | None = None
 
@@ -171,6 +177,9 @@ class Recorder:
                 self._mic_source, self._monitor_source, seg_path, quality=self._quality
             )
 
+        # A fresh ffmpeg reports its own silence from scratch, so the previous
+        # segment's state must not suppress the first event of this one.
+        self._silent = False
         try:
             self._ffmpeg = subprocess.Popen(
                 cmd,
@@ -268,8 +277,29 @@ class Recorder:
         assert proc.stderr is not None  # opened with stderr=PIPE
         for line in proc.stderr:
             text = line.decode("utf-8", errors="replace").rstrip()
-            if text:
-                logger.debug("ffmpeg[seg%d]: %s", seg_index, text)
+            if not text:
+                continue
+            event = parse_silence_event(text)
+            if event is not None:
+                self._report_silence(event.kind == SILENCE_START)
+                continue
+            logger.debug("ffmpeg[seg%d]: %s", seg_index, text)
+
+    def _report_silence(self, silent: bool) -> None:
+        """Pass a silence transition on, ignoring repeats of the same state.
+
+        Each segment starts a fresh ffmpeg, so a pause and resume can produce a
+        second silence_start with no end in between; only the change matters to
+        the listener.
+        """
+        if silent == self._silent:
+            return
+        self._silent = silent
+        if self._on_silence:
+            try:
+                self._on_silence(silent)
+            except Exception:
+                logger.exception("silence callback failed")
 
     def _monitor_ffmpeg(self, proc: subprocess.Popen[bytes], seg_index: int) -> None:
         """Watch for unexpected ffmpeg exit and report error."""

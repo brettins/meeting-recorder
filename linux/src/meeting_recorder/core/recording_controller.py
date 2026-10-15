@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +26,9 @@ from typing import Any
 
 from ..config.defaults import RECORDING_QUALITIES
 from ..utils.filename import output_paths
-from ..utils.meeting_scanner import set_meeting_tags
+from ..utils.meeting_scanner import set_meeting_tags, write_metadata
+from . import auto_stop
+from .recording_rename import apply_rename
 from .state_machine import State, can_transition
 from .task_runner import TaskRunner
 
@@ -43,6 +46,9 @@ class PendingRecording:
     transcript_path: Path
     notes_path: Path
     label: str
+    # The title as last edited by the user. The folder rename it implies is
+    # deferred until the recorder releases the directory (see core/recording_rename).
+    title: str | None = None
 
 
 def make_job_label(audio_path: Path, title: str | None) -> str:
@@ -84,6 +90,7 @@ class RecordingController:
         on_countdown: Callable[[int], None],
         on_timer: Callable[[int], None],
         on_recorder_error: Callable[[str], None],
+        on_auto_notice: Callable[[str, str], None] | None = None,
         recorder_factory: Callable[..., Any] | None = None,
         validate_devices_fn: Callable[[], tuple[bool, str]] | None = None,
         schedule_tick: Callable[[int, Callable[[], bool]], None] | None = None,
@@ -97,6 +104,9 @@ class RecordingController:
         self._on_countdown = on_countdown
         self._on_timer = on_timer
         self._on_recorder_error = on_recorder_error
+        # (action, message) for the auto-stop ladder: a nudge, a "stopping
+        # soon" warning, or the sentence shown when it stops by itself.
+        self._on_auto_notice = on_auto_notice
         self._recorder_factory = recorder_factory or _default_recorder_factory
         self._validate_devices = validate_devices_fn or _default_validate_devices
         self._schedule_tick = schedule_tick or _glib_schedule_tick
@@ -107,12 +117,29 @@ class RecordingController:
         self._countdown_gen = 0
         self._countdown_remaining = 0
         self._recorder_done = threading.Event()
+        # Set by the stop worker once the queued rename has been applied, and
+        # taken by the engine after wait_until_stopped() so the job adopts the
+        # folder's final paths.
+        self._final: PendingRecording | None = None
+
+        # Auto-stop bookkeeping. _silent_since is the monotonic time the
+        # current quiet stretch began, or None while there is sound.
+        self._auto_cfg = auto_stop.AutoStopConfig()
+        self._silent_since: float | None = None
+        self._announced_stage = auto_stop.STAGE_NOTHING
 
     # ------------------------------------------------------------------
 
     @property
     def state(self) -> State:
         return self._state
+
+    @property
+    def meeting_dir(self) -> str:
+        """Directory the recorder is writing into, or "" when idle."""
+        if self._state in (State.RECORDING, State.PAUSED) and self._pending is not None:
+            return str(self._pending.audio_path.parent)
+        return ""
 
     def start(
         self,
@@ -144,7 +171,13 @@ class RecordingController:
             transcript_path=transcript,
             notes_path=notes,
             label=make_job_label(audio, title),
+            title=title or None,
         )
+        self._final = None
+
+        self._auto_cfg = auto_stop.config_from(cfg)
+        self._silent_since = None
+        self._announced_stage = auto_stop.STAGE_NOTHING
 
         q_key = cfg.get("recording_quality", "high")
         _, q_val = RECORDING_QUALITIES.get(q_key, RECORDING_QUALITIES["high"])
@@ -153,8 +186,9 @@ class RecordingController:
             output_path=audio,
             mode=mode,
             quality=q_val,
-            on_tick=self._on_timer,
+            on_tick=self._on_tick,
             on_error=self._on_recorder_error,
+            on_silence=self._on_silence,
         )
         try:
             recorder.start()
@@ -166,6 +200,77 @@ class RecordingController:
 
         mode_label = "headphones" if mode == "headphones" else "speaker"
         self._set_state(State.RECORDING, f"Recording… ({mode_label} mode)")
+
+    # ------------------------------------------------------------------
+    # Auto-stop ladder
+    # ------------------------------------------------------------------
+
+    def _on_tick(self, seconds: int) -> None:
+        """Forward the elapsed second, then run the auto-stop ladder.
+
+        Called on a recorder worker thread, like on_recorder_error, so it only
+        *reports*: a stop is carried out by whoever owns the main thread, which
+        is the same contract on_timer already has.
+        """
+        self._on_timer(seconds)
+        decision = auto_stop.decide(
+            seconds,
+            self._silence_seconds(),
+            self._auto_cfg,
+            announced_stage=self._announced_stage,
+        )
+        if decision.action == auto_stop.NONE:
+            return
+        self._announced_stage = max(self._announced_stage, decision.stage)
+        if self._on_auto_notice:
+            self._on_auto_notice(decision.action, decision.message)
+
+    def _on_silence(self, silent: bool) -> None:
+        """Record that a quiet stretch began or ended.
+
+        ffmpeg only reports a stretch once it has already lasted the filter's
+        detection window, so that window is added back — otherwise every
+        threshold would be reached late by exactly that much.
+        """
+        if silent:
+            if self._silent_since is None:
+                self._silent_since = time.monotonic() - auto_stop.SILENCE_DETECT_SECONDS
+        else:
+            self._silent_since = None
+            self._announced_stage = auto_stop.STAGE_NOTHING
+
+    def _silence_seconds(self) -> int:
+        if self._silent_since is None:
+            return 0
+        return max(int(time.monotonic() - self._silent_since), 0)
+
+    def set_title(self, title: str | None) -> None:
+        """Retitle the running recording; the folder rename waits until stop.
+
+        The title lands in meeting.json straight away so it is not lost if the
+        recording is later discarded or its transcription fails.
+        """
+        if self._state not in (State.RECORDING, State.PAUSED) or self._pending is None:
+            return
+        clean = (title or "").strip() or None
+        if clean == self._pending.title:
+            return
+        self._pending.title = clean
+        self._pending.label = make_job_label(self._pending.audio_path, clean)
+        if clean:
+            try:
+                write_metadata(self._pending.audio_path.parent, {"title": clean})
+            except OSError as exc:
+                logger.warning("Could not write title mid-recording: %s", exc)
+
+    def set_tags(self, tags: list[str] | None) -> None:
+        """Assign tags to the running recording. Written to meeting.json now."""
+        if self._state not in (State.RECORDING, State.PAUSED) or self._pending is None:
+            return
+        try:
+            set_meeting_tags(self._pending.audio_path.parent, list(tags or []))
+        except OSError as exc:
+            logger.warning("Could not write tags mid-recording: %s", exc)
 
     def pause(self) -> None:
         if self._state != State.RECORDING or not self._recorder:
@@ -189,7 +294,9 @@ class RecordingController:
         recorder, self._recorder = self._recorder, None
 
         self._recorder_done.clear()
-        self._runner.submit(self._stop_recorder_worker, recorder, description="stop recorder")
+        self._runner.submit(
+            self._stop_recorder_worker, recorder, self._pending, description="stop recorder"
+        )
 
         if countdown_enabled:
             self._countdown_remaining = COUNTDOWN_SECONDS
@@ -214,13 +321,17 @@ class RecordingController:
         pending, self._pending = self._pending, None
         self._set_state(State.IDLE, "Stopping recording…")
 
-        def _done(_result: Any) -> None:
+        def _stop_and_rename() -> PendingRecording | None:
+            recorder.stop()
+            return _rebase(pending)
+
+        def _done(result: Any) -> None:
             self._on_state(State.IDLE, "Recording saved (no transcription).")
-            if pending is not None:
-                self._on_saved(pending)
+            if result is not None:
+                self._on_saved(result)
 
         self._runner.submit(
-            recorder.stop,
+            _stop_and_rename,
             on_done=_done,
             on_error=lambda exc: self._on_error(f"Failed to stop recording: {exc}"),
             description="stop recorder (cancel + save)",
@@ -237,12 +348,22 @@ class RecordingController:
 
         def _stop_and_discard() -> None:
             recorder.stop()
+            # No rename on the discard path — the folder is about to go.
             if audio_path and audio_path.exists():
                 try:
                     audio_path.unlink()
                 except Exception as exc:
                     logger.warning("Could not delete audio file: %s", exc)
             if audio_path:
+                # A title or tags set before/during the recording leave a
+                # meeting.json behind; discarding the audio should not litter
+                # the library with an otherwise-empty folder.
+                meta = audio_path.parent / "meeting.json"
+                try:
+                    if [p.name for p in audio_path.parent.iterdir()] == ["meeting.json"]:
+                        meta.unlink()
+                except OSError:
+                    pass
                 try:
                     audio_path.parent.rmdir()
                 except OSError:
@@ -270,13 +391,24 @@ class RecordingController:
         """Block (worker threads only) until recorder.stop() has finished."""
         self._recorder_done.wait(timeout=timeout)
 
+    def take_final_paths(self) -> PendingRecording | None:
+        """The post-rename paths, once and only once, after wait_until_stopped()."""
+        final, self._final = self._final, None
+        return final
+
     # ------------------------------------------------------------------
 
-    def _stop_recorder_worker(self, recorder: Any) -> None:
+    def _stop_recorder_worker(self, recorder: Any, pending: PendingRecording | None) -> None:
         try:
             recorder.stop()
         except Exception as exc:
             logger.error("Error stopping recorder: %s", exc)
+        try:
+            # Safe here and nowhere earlier: ffmpeg has exited and merged its
+            # segments, so nothing holds the directory open any more.
+            self._final = _rebase(pending)
+        except Exception as exc:
+            logger.error("Error applying queued rename: %s", exc)
         finally:
             self._recorder_done.set()
 
@@ -301,3 +433,16 @@ class RecordingController:
             logger.error("Illegal state transition %s -> %s", self._state.name, new_state.name)
         self._state = new_state
         self._on_state(new_state, status)
+
+
+def _rebase(pending: PendingRecording | None) -> PendingRecording | None:
+    """Apply the queued rename to *pending* and return it with the new paths."""
+    if pending is None:
+        return None
+    audio, transcript, notes = apply_rename(
+        pending.audio_path, pending.transcript_path, pending.notes_path, pending.title
+    )
+    pending.audio_path = audio
+    pending.transcript_path = transcript
+    pending.notes_path = notes
+    return pending

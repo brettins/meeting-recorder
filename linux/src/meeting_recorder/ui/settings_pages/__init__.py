@@ -9,7 +9,8 @@ chrome, page instantiation, and the save flow.
 
 from .general import GeneralPage
 from .models import ModelsPage
+from .notion import NotionPage
 from .prompts import PromptsPage
 from .widgets import IdComboRow
 
-__all__ = ["GeneralPage", "IdComboRow", "ModelsPage", "PromptsPage"]
+__all__ = ["GeneralPage", "IdComboRow", "ModelsPage", "NotionPage", "PromptsPage"]

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Rebuilds the .deb whenever main is updated (e.g. `git pull` after a merge on
+# GitHub), so the packaged build never silently lags behind main.
+#
+# Enable once per clone:
+#     git config core.hooksPath .githooks
+#
+# Installing still needs sudo, so this only builds and tells you the command.
+set -euo pipefail
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+[ "$BRANCH" = "main" ] || exit 0
+
+# ORIG_HEAD is the pre-merge commit; if nothing moved there is nothing to build.
+if git rev-parse -q --verify ORIG_HEAD >/dev/null; then
+    [ "$(git rev-parse ORIG_HEAD)" != "$(git rev-parse HEAD)" ] || exit 0
+fi
+
+ROOT=$(git rev-parse --show-toplevel)
+mkdir -p "$ROOT/dist"
+
+echo "--- main moved, rebuilding the .deb ---"
+if "$ROOT/scripts/build-deb.sh" "$ROOT/dist"; then
+    :
+else
+    echo "deb build FAILED — the installed package is now behind main" >&2
+    exit 0   # never fail the merge itself
+fi
