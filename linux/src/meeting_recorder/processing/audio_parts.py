@@ -34,8 +34,7 @@ def plan_parts(duration: float, part_seconds: int = PART_SECONDS) -> list[Part]:
 def extract_parts(source: Path, parts: list[Part], directory: Path, run_fn: RunFn) -> list[Path]:
     """Cut each span out of *source*, the last to the end of the file; raises if ffmpeg fails.
 
-    The probed length can fall short of the audio (a VBR MP3 with no header), so the last
-    cut ignores it.
+    A headerless VBR MP3 probes short, so the last cut ignores the probed length.
     """
     paths: list[Path] = []
     for index, part in enumerate(parts, 1):
@@ -111,9 +110,16 @@ def part_prompt(base: str, index: int, count: int, speakers: list[str]) -> str:
     return f"{base}\n\n{extra}"
 
 
+_BLOCKED_NOTE = "**Note:** Gemini's copyright filter blocked this stretch"
+
+
 def blocked_note(part: Part) -> str:
     """Transcript line for a stretch the copyright filter blocked."""
     return (
-        f"[{format_clock(part.start)}] **Note:** Gemini's copyright filter blocked this "
-        f"stretch, up to {format_clock(part.end)}. Not transcribed."
+        f"[{format_clock(part.start)}] {_BLOCKED_NOTE}, up to {format_clock(part.end)}. "
+        "Not transcribed."
     )
+
+
+def has_blocked_note(text: str) -> bool:
+    return _BLOCKED_NOTE in text

@@ -23,7 +23,9 @@ from ..audio_parts import (
     blocked_note,
     can_halve,
     extract_parts,
+    format_clock,
     halve,
+    has_blocked_note,
     named_speakers,
     part_prompt,
     plan_parts,
@@ -158,6 +160,7 @@ class GeminiProvider:
         self._summarization_prompt = summarization_prompt or SUMMARIZATION_PROMPT
         self._generate_timeout_ms = timeout_minutes * 60_000
         self._part_cache = part_cache or PartCache()
+        self._saved_parts: list[str] = []
         self._client: Any = None
 
     def _get_client(self) -> Any:
@@ -195,7 +198,6 @@ class GeminiProvider:
 
             segments: list[str] = []
             speakers: list[str] = []
-            saved: list[str] = []
             transcribed = 0
             for index, (part, path) in enumerate(zip(parts, files, strict=True), 1):
                 label = f"Part {index} of {len(parts)}"
@@ -211,16 +213,16 @@ class GeminiProvider:
                 if text is not None:
                     part_status("Using the transcript saved from the last attempt")
                     count = 1
+                    self._saved_parts.append(key)
                 else:
                     prompt = part_prompt(self._transcription_prompt, index, len(parts), speakers)
                     text, count = self._transcribe_span(
                         path, part, prompt, part_status, Path(scratch)
                     )
-                    if count:
+                    if count and not has_blocked_note(text):
                         self._part_cache.put(key, text)
-                if count:
-                    saved.append(key)
-                    transcribed += count
+                        self._saved_parts.append(key)
+                transcribed += count
                 speakers = [*speakers, *(n for n in named_speakers(text) if n not in speakers)]
                 segments.append(text)
 
@@ -229,8 +231,12 @@ class GeminiProvider:
                 "Gemini's copyright filter blocked every part of the recording. "
                 "Try again; it does not always block the same audio."
             )
-        self._part_cache.discard(saved)
         return "\n\n".join(segments)
+
+    def release_saved_parts(self) -> None:
+        """Forget the saved part transcripts; call once the job has written its results."""
+        self._part_cache.discard(self._saved_parts)
+        self._saved_parts = []
 
     def _transcribe_span(
         self,
@@ -247,7 +253,11 @@ class GeminiProvider:
         try:
             text = self._transcribe_file(path, prompt, on_status)
         except RecitationBlocked:
-            logger.warning("%s-%s blocked by the copyright filter", span.start, span.end)
+            logger.warning(
+                "%s-%s blocked by the copyright filter",
+                format_clock(span.start),
+                format_clock(span.end),
+            )
             if not can_halve(span):
                 return blocked_note(span), 0
             try:

@@ -291,7 +291,7 @@ class Engine:
         if state == State.IDLE:
             self._elapsed = 0
             self._countdown = 0
-            # The second IDLE after cancel-and-save arrives when the next one may be named.
+            # Skip on the second IDLE after cancel-and-save: the next one may already be titled.
             if not self._was_idle:
                 self._pending_title = None
                 self._pending_tags = []

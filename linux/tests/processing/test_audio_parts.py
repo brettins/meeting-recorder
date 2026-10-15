@@ -12,6 +12,7 @@ from meeting_recorder.processing.audio_parts import (
     can_halve,
     extract_parts,
     halve,
+    has_blocked_note,
     named_speakers,
     part_prompt,
     plan_parts,
@@ -153,3 +154,8 @@ def test_halve_cuts_relative_to_the_part_file_and_returns_absolute_spans(tmp_pat
     assert calls[0][calls[0].index("-to") + 1] == "300.000"
     assert calls[1][calls[1].index("-ss") + 1] == "300.000"
     assert "-to" not in calls[1]
+
+
+def test_has_blocked_note_finds_a_note_and_not_speech():
+    assert has_blocked_note("[00:00:01] **A:** hi\n\n" + blocked_note(Part(0.0, 60.0)))
+    assert not has_blocked_note("[00:00:01] **A:** the filter blocked this stretch")

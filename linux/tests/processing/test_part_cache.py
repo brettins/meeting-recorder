@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 
 from meeting_recorder.processing.part_cache import PartCache
@@ -52,3 +53,36 @@ def test_an_unwritable_directory_is_not_an_error(tmp_path):
     cache.put("k", "text")
     assert cache.get("k") is None
     cache.prune()
+
+
+def test_an_empty_entry_is_a_miss(tmp_path):
+    cache = PartCache(tmp_path / "parts")
+    cache.put("k", "")
+    assert cache.get("k") is None
+
+
+def test_put_leaves_no_temporary_file_and_keeps_the_text_private(tmp_path):
+    cache = PartCache(tmp_path / "parts")
+    cache.put("k", "text")
+
+    assert [p.name for p in (tmp_path / "parts").iterdir()] == ["k.md"]
+    assert stat.S_IMODE((tmp_path / "parts").stat().st_mode) == 0o700
+    assert stat.S_IMODE((tmp_path / "parts" / "k.md").stat().st_mode) == 0o600
+
+
+def test_a_half_written_entry_is_never_read(tmp_path):
+    cache = PartCache(tmp_path / "parts")
+    cache.put("k", "complete")
+    (tmp_path / "parts" / "k.tmp").write_text("half")
+    assert cache.get("k") == "complete"
+
+
+def test_prune_goes_on_past_an_entry_it_cannot_read(tmp_path):
+    cache = PartCache(tmp_path / "parts")
+    cache.put("old", "x")
+    os.utime(tmp_path / "parts" / "old.md", (1, 1))
+    (tmp_path / "parts" / "a-broken-link.md").symlink_to(tmp_path / "missing")
+
+    cache.prune(max_age_seconds=3600)
+
+    assert cache.get("old") is None

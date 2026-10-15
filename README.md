@@ -89,10 +89,10 @@ Turn it off with **Remove silence before transcribing** in Settings → General.
 ### Long recordings are transcribed in parts
 
 A recording over 20 minutes is sent to Gemini in 15-minute parts and joined into one transcript. Gemini's
-copyright filter can refuse a part; that part is cut in half and each half is asked for again. If a short stretch
-stays blocked, the transcript gets a note naming the missing stretch. Speaker names carry over between parts, but
-"Person 1" and "Person 2" labels restart in each part, so the same label can be a different voice in the next part.
-If a later part fails, Retry reuses the parts already transcribed.
+copyright filter can refuse a part; that part is cut in half and each half is asked for again. A stretch under
+four minutes that stays blocked becomes a note saying where it is missing. Speaker names carry over between parts.
+"Person 1" and "Person 2" restart in each part and may name a different voice. If a later part, or the summary,
+fails, Retry reuses the parts already transcribed.
 
 ### Splitting a long recording
 

@@ -194,6 +194,8 @@ def test_parts_are_joined_with_shifted_timestamps(monkeypatch, tmp_path):
     assert text == "[00:00:05] **Ryan:** one\n\n[00:15:07] **Person 1:** two"
     assert "Ryan" in calls[1][1]
     assert "part 2 of 2" in calls[1][1]
+    assert len(_saved_entries(tmp_path)) == 2
+    provider.release_saved_parts()
     assert _saved_entries(tmp_path) == []
 
 
@@ -255,6 +257,40 @@ def test_a_failed_part_keeps_the_finished_ones_for_the_retry(monkeypatch, tmp_pa
 
     assert [name for name, _ in calls] == ["part2.mp3"]
     assert text == "[00:00:01] **A:** one\n\n[00:15:01] **A:** two"
+    assert len(_saved_entries(tmp_path)) == 2
+    provider.release_saved_parts()
+    assert _saved_entries(tmp_path) == []
+
+
+def test_a_part_with_a_blocked_note_is_not_saved_so_a_retry_tries_it_again(monkeypatch, tmp_path):
+    monkeypatch.setattr(gemini, "can_halve", lambda span: span.duration > 700)
+    answers = {
+        "part1.mp3": ["[00:00:01] **A:** ok"],
+        "part2.mp3": [RecitationBlocked("no"), "[00:00:01] **A:** now fine"],
+    }
+    provider, calls, _ = _provider(monkeypatch, 1500.0, answers)
+    provider.transcribe(tmp_path / "a.mp3")
+    assert len(_saved_entries(tmp_path)) == 1
+    calls.clear()
+
+    text = provider.transcribe(tmp_path / "a.mp3")
+
+    assert [name for name, _ in calls] == ["part2.mp3"]
+    assert "**Note:**" not in text
+
+
+def test_parts_reused_from_the_saved_set_are_released_with_the_rest(monkeypatch, tmp_path):
+    answers = {
+        "part1.mp3": ["[00:00:01] **A:** one"],
+        "part2.mp3": [RuntimeError("down"), "[00:00:01] **A:** two"],
+    }
+    provider, _, _ = _provider(monkeypatch, 1500.0, answers)
+    with pytest.raises(RuntimeError):
+        provider.transcribe(tmp_path / "a.mp3")
+
+    provider.transcribe(tmp_path / "a.mp3")
+    provider.release_saved_parts()
+
     assert _saved_entries(tmp_path) == []
 
 

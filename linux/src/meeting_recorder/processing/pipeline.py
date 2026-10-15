@@ -127,6 +127,9 @@ class Pipeline:
         self._check_cancelled(cancel_token)
 
         self._write_results(transcript, notes)
+        release = getattr(ts_provider, "release_saved_parts", None)
+        if callable(release):
+            release()
 
         if self._config.get("auto_title", True):
             self._auto_title(notes)
