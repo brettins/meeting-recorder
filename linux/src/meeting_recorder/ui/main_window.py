@@ -366,7 +366,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._active_row.append(save_btn)
         self._controls[CANCEL_SAVE] = save_btn
 
-        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn = Gtk.Button(label="Discard recording…")
         cancel_btn.add_css_class("pill")
         cancel_btn.connect("clicked", lambda *_: self.on_cancel_clicked())
         self._active_row.append(cancel_btn)
@@ -495,7 +495,23 @@ class MainWindow(Adw.ApplicationWindow):
         self._engine.cancel_save()
 
     def on_cancel_clicked(self) -> None:
-        self._engine.cancel()
+        alert = Gtk.AlertDialog()
+        alert.set_modal(True)
+        alert.set_message("Discard this recording?")
+        alert.set_detail("The audio recorded so far will be deleted. This cannot be undone.")
+        alert.set_buttons(["Keep recording", "Discard recording"])
+        alert.set_cancel_button(0)
+        alert.set_default_button(0)
+
+        def on_choice(dialog, result) -> None:
+            try:
+                choice = dialog.choose_finish(result)
+            except GLib.Error:
+                return  # dismissed
+            if choice == 1:
+                self._engine.cancel()
+
+        alert.choose(self, None, on_choice)
 
     # ------------------------------------------------------------------
     # Use Existing / Summarize (GTK selection here, processing in the daemon)

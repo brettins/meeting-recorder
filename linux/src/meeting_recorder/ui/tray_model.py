@@ -57,12 +57,12 @@ def build_menu_model(recording_state: str, jobs: list) -> list[dict]:
         action("Pause Recording", "pause")
         action("Stop Recording", "stop")
         action("Cancel (save recording)", "cancel_save")
-        action("Cancel", "cancel")
+        action("Discard recording…", "cancel")
     elif recording_state == "paused":
         action("Resume Recording", "resume")
         action("Stop Recording", "stop")
         action("Cancel (save recording)", "cancel_save")
-        action("Cancel", "cancel")
+        action("Discard recording…", "cancel")
 
     # Background-jobs section (only when jobs are active).
     if jobs:

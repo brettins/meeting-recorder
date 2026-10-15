@@ -36,7 +36,6 @@ ENGINE_COMMANDS = frozenset(
         RESUME,
         STOP,
         CANCEL_SAVE,
-        CANCEL,
         CANCEL_COUNTDOWN,
     }
 )
