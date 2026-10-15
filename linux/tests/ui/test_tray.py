@@ -128,3 +128,10 @@ class TestTraySignature:
         assert tray_signature("paused", [("Standup", lambda: None)]) != base
         assert tray_signature("recording", []) != base
         assert tray_signature("recording", [("Sync", lambda: None)]) != base
+
+
+def test_the_tray_discard_item_has_the_same_label_as_the_window_button():
+    for state in ("recording", "paused"):
+        items = build_menu_model(state, [])
+        discard = [i for i in items if i.get("action") == "cancel"]
+        assert [i["label"] for i in discard] == ["Discard recording…"]

@@ -120,6 +120,8 @@ class Engine:
         ]
 
     def snapshot_json(self) -> str:
+        for job in self._job_manager.drop_resolved_errors():
+            self._job_status_text.pop(job.job_id, None)
         state = self._controller.state
         wire_state = "countdown" if state == State.COUNTDOWN else _STATE_NAMES.get(state, "idle")
         job_dicts = [

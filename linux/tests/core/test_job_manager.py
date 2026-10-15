@@ -1,6 +1,7 @@
 """Tests for JobManager persistence and startup recovery (temp dirs, no GTK)."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -322,3 +323,134 @@ class TestFinishedToKeepPolicy:
     def test_the_age_limit(self, age, kept):
         job = self._job(JobStatus.DONE, 1000.0)
         assert bool(finished_to_keep([job], 1000.0 + age)) is kept
+
+
+class TestResolvedErrors:
+    def _failed(self, tmp_path, name="m", clock=None):
+        mgr = _mgr(tmp_path / "state", clock)
+        folder = _meeting_dir(tmp_path, name)
+        job = _create(mgr, name, folder)
+        mgr.mark_error(job, "Gemini returned no text")
+        return mgr, job, folder
+
+    def test_a_failed_job_goes_once_its_meeting_has_a_transcript(self, tmp_path):
+        mgr, job, folder = self._failed(tmp_path)
+        (folder / "transcript.md").write_text("[00:00:01] **A:** hi")
+
+        assert mgr.drop_resolved_errors() == [job]
+        assert mgr.jobs == []
+
+    def test_the_drop_is_saved_to_disk(self, tmp_path):
+        mgr, _, folder = self._failed(tmp_path)
+        (folder / "transcript.md").write_text("text")
+        mgr.drop_resolved_errors()
+
+        assert _mgr(tmp_path / "state").load_persisted() == []
+
+    def test_a_failed_job_without_a_transcript_stays(self, tmp_path):
+        mgr, job, _ = self._failed(tmp_path)
+
+        assert mgr.drop_resolved_errors() == []
+        assert mgr.jobs == [job]
+
+    def test_an_empty_transcript_does_not_count(self, tmp_path):
+        mgr, _, folder = self._failed(tmp_path)
+        (folder / "transcript.md").write_text("")
+
+        assert mgr.drop_resolved_errors() == []
+
+    def _old_transcript_then_failed_job(self, tmp_path):
+        folder = _meeting_dir(tmp_path, "old")
+        transcript = folder / "transcript.md"
+        transcript.write_text("an earlier run")
+        mgr = _mgr(tmp_path / "state", Clock(transcript.stat().st_mtime + 100))
+        job = _create(mgr, "old", folder)
+        mgr.mark_error(job, "summary refused")
+        return mgr
+
+    def test_a_transcript_from_before_the_job_began_does_not_hide_its_failure(self, tmp_path):
+        mgr = self._old_transcript_then_failed_job(tmp_path)
+
+        assert mgr.drop_resolved_errors() == []
+
+    def test_an_older_transcript_still_keeps_the_failure_after_a_restart(self, tmp_path):
+        self._old_transcript_then_failed_job(tmp_path)
+
+        second = _mgr(tmp_path / "state")
+        second.load_persisted()
+
+        assert second.drop_resolved_errors() == []
+        assert [j.status for j in second.jobs] == [JobStatus.ERROR]
+
+    def test_a_transcript_written_after_a_restart_clears_the_job(self, tmp_path):
+        mgr, _, folder = self._failed(tmp_path)
+        second = _mgr(tmp_path / "state")
+        second.load_persisted()
+        (folder / "transcript.md").write_text("text")
+
+        assert len(second.drop_resolved_errors()) == 1
+
+    def test_a_retry_counts_from_the_retry(self, tmp_path):
+        folder = _meeting_dir(tmp_path, "retry")
+        clock = Clock(1_000.0)
+        mgr = _mgr(tmp_path / "state", clock)
+        job = _create(mgr, "retry", folder)
+        mgr.mark_error(job, "first failure")
+        transcript = folder / "transcript.md"
+        transcript.write_text("written between the runs")
+        clock.now = transcript.stat().st_mtime + 100
+        mgr.mark_processing(job)
+        mgr.mark_error(job, "second failure")
+
+        assert mgr.drop_resolved_errors() == []
+
+    def _legacy_job(self, tmp_path, transcript_age):
+        """A job saved without started_at, with its audio written at a known time."""
+        folder = _meeting_dir(tmp_path, "legacy")
+        audio = folder / "recording.mp3"
+        audio.write_bytes(b"x")
+        os.utime(audio, (5_000, 5_000))
+        transcript = folder / "transcript.md"
+        transcript.write_text("text")
+        os.utime(transcript, (5_000 + transcript_age, 5_000 + transcript_age))
+        state = tmp_path / "state"
+        state.mkdir()
+        entry = {
+            "job_id": 3,
+            "audio_path": str(audio),
+            "transcript_path": str(transcript),
+            "notes_path": str(folder / "notes.md"),
+            "label": "legacy",
+            "status": "error",
+            "error_msg": "Gemini returned no text",
+            "finished_at": None,
+        }
+        (state / "jobs.json").write_text(json.dumps({"version": 1, "next_id": 4, "jobs": [entry]}))
+        mgr = _mgr(state)
+        mgr.load_persisted()
+        return mgr
+
+    def test_a_job_without_a_start_time_clears_when_the_transcript_is_newer_than_its_audio(
+        self, tmp_path
+    ):
+        mgr = self._legacy_job(tmp_path, transcript_age=3_600)
+
+        assert len(mgr.drop_resolved_errors()) == 1
+
+    def test_a_job_without_a_start_time_keeps_its_failure_when_the_transcript_is_older(
+        self, tmp_path
+    ):
+        mgr = self._legacy_job(tmp_path, transcript_age=-3_600)
+
+        assert mgr.drop_resolved_errors() == []
+
+    def test_jobs_in_other_states_are_left_alone(self, tmp_path):
+        mgr = _mgr(tmp_path / "state")
+        folder = _meeting_dir(tmp_path, "busy")
+        (folder / "transcript.md").write_text("text")
+        running = _create(mgr, "busy", folder)
+        finished = _create(mgr, "done", folder)
+        mgr.mark_done(finished)
+
+        assert mgr.drop_resolved_errors() == []
+        assert running in mgr.jobs and finished in mgr.jobs
