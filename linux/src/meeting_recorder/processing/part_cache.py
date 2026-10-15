@@ -38,7 +38,7 @@ class PartCache:
     def get(self, key: str) -> str | None:
         try:
             text = (self._directory / f"{key}.md").read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, ValueError):
             return None
         return text or None
 
@@ -56,7 +56,10 @@ class PartCache:
 
     def discard(self, keys: Iterable[str]) -> None:
         for key in keys:
-            (self._directory / f"{key}.md").unlink(missing_ok=True)
+            try:
+                (self._directory / f"{key}.md").unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("Could not remove a saved part transcript: %s", exc)
 
     def prune(self, max_age_seconds: float = MAX_AGE_SECONDS) -> None:
         """Remove entries left by jobs that never finished."""

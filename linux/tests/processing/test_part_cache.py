@@ -86,3 +86,22 @@ def test_prune_goes_on_past_an_entry_it_cannot_read(tmp_path):
     cache.prune(max_age_seconds=3600)
 
     assert cache.get("old") is None
+
+
+def test_an_entry_that_is_not_valid_text_is_a_miss(tmp_path):
+    cache = PartCache(tmp_path / "parts")
+    cache.put("k", "x")
+    (tmp_path / "parts" / "k.md").write_bytes(b"\xff\xfe\x00bad")
+    assert cache.get("k") is None
+
+
+def test_discard_goes_on_past_an_entry_it_cannot_remove(tmp_path):
+    cache = PartCache(tmp_path / "parts")
+    cache.put("stuck", "x")
+    cache.put("gone", "y")
+    (tmp_path / "parts" / "stuck.md").unlink()
+    (tmp_path / "parts" / "stuck.md").mkdir()
+
+    cache.discard(["stuck", "gone"])
+
+    assert cache.get("gone") is None
