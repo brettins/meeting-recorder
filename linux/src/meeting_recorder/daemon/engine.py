@@ -76,6 +76,7 @@ class Engine:
         # window reopened mid-recording all render the same meeting.
         self._pending_title: str | None = None
         self._pending_tags: list[str] = []
+        self._was_idle = True
         self._job_status_text: dict[int, str] = {}
         # Each processing job runs in a short-lived child process so the heavy
         # Gemini/Whisper stack never accumulates in the daemon. Tracked by
@@ -290,10 +291,11 @@ class Engine:
         if state == State.IDLE:
             self._elapsed = 0
             self._countdown = 0
-            # The title/tags belonged to the recording that just ended; the next
-            # one starts from a clean Record tab.
-            self._pending_title = None
-            self._pending_tags = []
+            # Skip on the second IDLE after cancel-and-save: the next one may already be titled.
+            if not self._was_idle:
+                self._pending_title = None
+                self._pending_tags = []
+        self._was_idle = state == State.IDLE
         self._changed()
 
     def _on_recording_committed(self, pending: PendingRecording) -> None:
@@ -328,6 +330,8 @@ class Engine:
         idle_call(self._update_timer, elapsed)
 
     def _update_timer(self, elapsed: int) -> None:
+        if self._controller.state not in (State.RECORDING, State.PAUSED):
+            return  # a tick queued before the recording ended
         self._elapsed = elapsed
         self._changed()
 
@@ -359,7 +363,14 @@ class Engine:
                 idle_call(self._adopt_recording_paths, j, final)
             idle_call(self._launch_processor, j)
 
-        self._runner.submit(_wait_then_launch, job, description=f"await stop: {job.label}")
+        self._runner.submit(
+            _wait_then_launch,
+            job,
+            on_error=lambda exc, j=job: self._on_processing_error(
+                j, f"Could not finish saving the recording: {exc}"
+            ),
+            description=f"await stop: {job.label}",
+        )
 
     def _adopt_recording_paths(self, job: Job, pending: PendingRecording) -> None:
         """Take the paths the queued title rename produced (main thread)."""
@@ -374,14 +385,19 @@ class Engine:
         if job.cancelled:
             return
         self._set_job_status_text(job.job_id, "Transcribing…")
-        handle = self._launcher().launch(
-            str(job.audio_path),
-            str(job.transcript_path),
-            str(job.notes_path),
-            on_status=lambda msg, jid=job.job_id: self._set_job_status_text(jid, msg),
-            on_done=lambda paths, j=job: self._on_processing_done(j, paths),
-            on_error=lambda msg, j=job: self._on_processing_error(j, msg),
-        )
+        try:
+            handle = self._launcher().launch(
+                str(job.audio_path),
+                str(job.transcript_path),
+                str(job.notes_path),
+                on_status=lambda msg, jid=job.job_id: self._set_job_status_text(jid, msg),
+                on_done=lambda paths, j=job: self._on_processing_done(j, paths),
+                on_error=lambda msg, j=job: self._on_processing_error(j, msg),
+            )
+        except Exception as exc:
+            logger.exception("Could not start processing %s", job.label)
+            self._on_processing_error(job, f"Could not start processing: {exc}")
+            return
         self._processors[job.job_id] = handle
 
     def _launcher(self):

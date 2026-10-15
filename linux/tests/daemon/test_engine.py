@@ -73,9 +73,11 @@ class RecordingRunner:
 
     def __init__(self):
         self.submissions = []
+        self.on_errors = []
 
     def submit(self, fn, *args, on_done=None, on_error=None, description=""):
         self.submissions.append(description)
+        self.on_errors.append(on_error)
 
 
 class FakeProcessorHandle:
@@ -198,6 +200,33 @@ def test_cancel_job_kills_running_processor(engine, tmp_path):
     assert handle.cancelled is True
     assert job.job_id not in engine._processors
     assert engine._job_manager.jobs == []
+
+
+def test_a_processor_that_cannot_start_ends_in_an_error_not_a_stuck_job(engine, tmp_path):
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("no interpreter")
+
+    from meeting_recorder.core.job import JobStatus
+
+    engine._test["launcher"].launch = refuse
+    engine.import_existing(*_paths(tmp_path), "Standup")
+
+    job = engine._job_manager.jobs[0]
+    assert job.status is JobStatus.ERROR
+    assert "no interpreter" in job.error_msg
+
+
+def test_a_failure_while_the_recording_finishes_saving_ends_in_an_error(engine, tmp_path):
+    from meeting_recorder.core.job import JobStatus
+
+    a, t, n = _paths(tmp_path)
+    job = engine._job_manager.create(Path(a), Path(t), Path(n), "Standup")
+    engine._submit_recorded_job(job)
+
+    engine._runner.on_errors[-1](OSError("disk full"))
+
+    assert job.status is JobStatus.ERROR
+    assert "disk full" in job.error_msg
 
 
 def test_processing_error_marks_job_error(engine, tmp_path):
@@ -352,6 +381,7 @@ def test_the_snapshot_reports_the_folder_being_recorded_into(engine):
 def test_title_and_tags_reset_once_the_recording_ends(engine):
     engine.set_title("Weekly Sync")
     engine.set_tags(["Story City"])
+    engine._on_state(State.RECORDING, "Recording…")
 
     # The controller reports IDLE when the recording is committed or cancelled.
     engine._on_state(State.IDLE, "")
@@ -359,6 +389,34 @@ def test_title_and_tags_reset_once_the_recording_ends(engine):
     snap = json.loads(engine.snapshot_json())
     assert snap["title"] == ""
     assert snap["tags"] == []
+
+
+def test_the_idle_report_after_cancel_and_save_keeps_the_next_title(engine):
+    engine._on_state(State.RECORDING, "Recording…")
+    engine._on_state(State.IDLE, "Stopping recording…")
+
+    engine.set_title("Next meeting")
+    engine.set_tags(["Story City"])
+    engine._on_state(State.IDLE, "Recording saved (no transcription).")
+
+    snap = json.loads(engine.snapshot_json())
+    assert snap["title"] == "Next meeting"
+    assert snap["tags"] == ["Story City"]
+    assert snap["status"] == "Recording saved (no transcription)."
+
+
+def test_a_tick_queued_before_the_recording_ended_does_not_restart_the_clock(engine):
+    ctrl = engine._test["ctrl"]["ctrl"]
+    ctrl.state = State.RECORDING
+    engine._on_state(State.RECORDING, "Recording…")
+    engine._update_timer(1618)
+    assert json.loads(engine.snapshot_json())["elapsed"] == 1618
+
+    ctrl.state = State.IDLE
+    engine._on_state(State.IDLE, "")
+    engine._update_timer(1619)
+
+    assert json.loads(engine.snapshot_json())["elapsed"] == 0
 
 
 def test_a_renamed_recording_folder_is_adopted_by_its_job(engine, tmp_path):
