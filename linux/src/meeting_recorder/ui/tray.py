@@ -92,7 +92,7 @@ def _load_icon_pixmaps(name: str) -> list:
 
 
 def _icon_pixmap_variant(name: str) -> GLib.Variant:
-    """The ``IconPixmap`` property value for ``name``, built once (~100 ms each time)."""
+    """The ``IconPixmap`` value for ``name``. Built once; a build takes ~100 ms."""
     if name not in _pixmap_variant_cache:
         _pixmap_variant_cache[name] = GLib.Variant("a(iiay)", _load_icon_pixmaps(name))
     return _pixmap_variant_cache[name]
@@ -360,8 +360,7 @@ class TrayIcon:
     # ------------------------------------------------------------------
 
     def _sni_get_property(self, _conn, _sender, _path, _iface, prop):
-        # Built per property: a host's GetAll calls this once for each of the
-        # eleven, and the pixmap Variant alone costs ~100 ms to construct.
+        # GetAll calls this once per property (11). Build only the one asked for.
         if prop == "IconPixmap":
             return _icon_pixmap_variant(self._icon_name)
         if prop == "IconName":

@@ -291,9 +291,7 @@ class Engine:
         if state == State.IDLE:
             self._elapsed = 0
             self._countdown = 0
-            # The next recording starts from a clean Record tab. Only a recording
-            # ending clears it: the second IDLE after cancel-and-save arrives
-            # while the user may already be naming the next one.
+            # The second IDLE after cancel-and-save arrives when the next one may be named.
             if not self._was_idle:
                 self._pending_title = None
                 self._pending_tags = []
@@ -365,7 +363,14 @@ class Engine:
                 idle_call(self._adopt_recording_paths, j, final)
             idle_call(self._launch_processor, j)
 
-        self._runner.submit(_wait_then_launch, job, description=f"await stop: {job.label}")
+        self._runner.submit(
+            _wait_then_launch,
+            job,
+            on_error=lambda exc, j=job: self._on_processing_error(
+                j, f"Could not finish saving the recording: {exc}"
+            ),
+            description=f"await stop: {job.label}",
+        )
 
     def _adopt_recording_paths(self, job: Job, pending: PendingRecording) -> None:
         """Take the paths the queued title rename produced (main thread)."""

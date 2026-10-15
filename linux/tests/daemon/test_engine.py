@@ -73,9 +73,11 @@ class RecordingRunner:
 
     def __init__(self):
         self.submissions = []
+        self.on_errors = []
 
     def submit(self, fn, *args, on_done=None, on_error=None, description=""):
         self.submissions.append(description)
+        self.on_errors.append(on_error)
 
 
 class FakeProcessorHandle:
@@ -212,6 +214,19 @@ def test_a_processor_that_cannot_start_ends_in_an_error_not_a_stuck_job(engine, 
     job = engine._job_manager.jobs[0]
     assert job.status is JobStatus.ERROR
     assert "no interpreter" in job.error_msg
+
+
+def test_a_failure_while_the_recording_finishes_saving_ends_in_an_error(engine, tmp_path):
+    from meeting_recorder.core.job import JobStatus
+
+    a, t, n = _paths(tmp_path)
+    job = engine._job_manager.create(Path(a), Path(t), Path(n), "Standup")
+    engine._submit_recorded_job(job)
+
+    engine._runner.on_errors[-1](OSError("disk full"))
+
+    assert job.status is JobStatus.ERROR
+    assert "disk full" in job.error_msg
 
 
 def test_processing_error_marks_job_error(engine, tmp_path):
