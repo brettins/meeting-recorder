@@ -572,8 +572,6 @@ class MainWindow(Adw.ApplicationWindow):
         )
         if err:
             self.show_error(err)
-            return
-        self._stack.set_visible_child_name("recorder")
 
     # ------------------------------------------------------------------
     # Error display (Engine Error signal)
