@@ -7,7 +7,6 @@ transcription and summarization prompts with appropriate model configurations.
 from __future__ import annotations
 
 import logging
-import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -18,23 +17,6 @@ from ...config.defaults import (
     SUMMARIZATION_PROMPT,
 )
 from ...core.retry import retry_on_transient
-from ...services.recording_splitter import _run as run_command
-from ..audio_parts import (
-    blocked_note,
-    can_halve,
-    extract_parts,
-    format_clock,
-    halve,
-    has_blocked_note,
-    named_speakers,
-    part_prompt,
-    plan_parts,
-    shift_timestamps,
-    strip_preamble,
-)
-from ..part_cache import PartCache
-from ..silence_map import Part
-from ..upload_audio import probe_duration
 
 logger = logging.getLogger(__name__)
 
@@ -65,18 +47,13 @@ _MAX_OUTPUT_TOKENS = 65_536
 # Bounds on the Files API calls, which otherwise wait forever on a dead connection.
 _FILE_CALL_TIMEOUT_MS = 60_000
 
-
-class RecitationBlocked(RuntimeError):
-    """Gemini's copyright filter refused to return the text."""
-
-
 _BLOCKED = {"transcription": ("transcription", "audio"), "summarization": ("summary", "transcript")}
 
 
 def _require_text(response: Any, context: str) -> str:
     """Extract text from a GenerateContentResponse, raising clearly if empty or truncated."""
     # Log token usage and finish_reason for diagnostics
-    _truncation_error: RuntimeError | None = None
+    _truncation_error = None
     try:
         usage = getattr(response, "usage_metadata", None)
         if usage:
@@ -93,7 +70,7 @@ def _require_text(response: Any, context: str) -> str:
             logger.info("%s finish_reason: %s", context, finish_reason)
             if "RECITATION" in str(getattr(finish_reason, "name", finish_reason)):
                 step, source = _BLOCKED.get(context, (context, "transcript"))
-                _truncation_error = RecitationBlocked(
+                _truncation_error = RuntimeError(
                     f"Gemini's copyright filter blocked the {step}. It flagged part of the "
                     f"{source} as copyrighted text, such as song lyrics or a passage read aloud. "
                     f"Try again; it does not always block the same {source}."
@@ -151,7 +128,6 @@ class GeminiProvider:
         transcription_prompt: str = "",
         summarization_prompt: str = "",
         timeout_minutes: int = 3,
-        part_cache: PartCache | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
@@ -159,8 +135,6 @@ class GeminiProvider:
         self._transcription_prompt = transcription_prompt or GEMINI_TRANSCRIPTION_PROMPT
         self._summarization_prompt = summarization_prompt or SUMMARIZATION_PROMPT
         self._generate_timeout_ms = timeout_minutes * 60_000
-        self._part_cache = part_cache or PartCache()
-        self._saved_parts: list[str] = []
         self._client: Any = None
 
     def _get_client(self) -> Any:
@@ -183,102 +157,7 @@ class GeminiProvider:
         audio_path: Path,
         on_status: Callable[[str], None] | None = None,
     ) -> str:
-        """Transcribe an audio file, in parts when it is long."""
-        parts = plan_parts(probe_duration(audio_path, run_command))
-        if len(parts) < 2:
-            return self._transcribe_file(audio_path, self._transcription_prompt, on_status)
-
-        self._part_cache.prune()
-        with tempfile.TemporaryDirectory(prefix="meeting-parts-") as scratch:
-            try:
-                files = extract_parts(audio_path, parts, Path(scratch), run_command)
-            except Exception as exc:
-                logger.warning("Could not cut %s into parts (%s); sending whole", audio_path, exc)
-                return self._transcribe_file(audio_path, self._transcription_prompt, on_status)
-
-            segments: list[str] = []
-            speakers: list[str] = []
-            transcribed = 0
-            for index, (part, path) in enumerate(zip(parts, files, strict=True), 1):
-                label = f"Part {index} of {len(parts)}"
-
-                def part_status(message: str, label: str = label) -> None:
-                    if on_status:
-                        on_status(f"{label}: {message}")
-
-                key = self._part_cache.key(
-                    path, self._model, self._transcription_prompt, f"{index}/{len(parts)}"
-                )
-                text = self._part_cache.get(key)
-                if text is not None:
-                    part_status("Using the transcript saved from the last attempt")
-                    count = 1
-                    self._saved_parts.append(key)
-                else:
-                    prompt = part_prompt(self._transcription_prompt, index, len(parts), speakers)
-                    text, count = self._transcribe_span(
-                        path, part, prompt, part_status, Path(scratch)
-                    )
-                    if count and not has_blocked_note(text):
-                        self._part_cache.put(key, text)
-                        self._saved_parts.append(key)
-                transcribed += count
-                speakers = [*speakers, *(n for n in named_speakers(text) if n not in speakers)]
-                segments.append(text)
-
-        if not transcribed:
-            raise RecitationBlocked(
-                "Gemini's copyright filter blocked every part of the recording. "
-                "Try again; it does not always block the same audio."
-            )
-        return "\n\n".join(segments)
-
-    def release_saved_parts(self) -> None:
-        """Forget the saved part transcripts; call once the job has written its results."""
-        self._part_cache.discard(self._saved_parts)
-        self._saved_parts = []
-
-    def _transcribe_span(
-        self,
-        path: Path,
-        span: Part,
-        prompt: str,
-        on_status: Callable[[str], None],
-        scratch: Path,
-    ) -> tuple[str, int]:
-        """Transcribe one span; if the copyright filter blocks it, try each half separately.
-
-        Returns the text with absolute timestamps and how many spans were transcribed.
-        """
-        try:
-            text = self._transcribe_file(path, prompt, on_status)
-        except RecitationBlocked:
-            logger.warning(
-                "%s-%s blocked by the copyright filter",
-                format_clock(span.start),
-                format_clock(span.end),
-            )
-            if not can_halve(span):
-                return blocked_note(span), 0
-            try:
-                halves = halve(path, span, Path(tempfile.mkdtemp(dir=scratch)), run_command)
-            except Exception as exc:
-                logger.warning("Could not halve a blocked span (%s)", exc)
-                return blocked_note(span), 0
-            results = [
-                self._transcribe_span(half_path, half, prompt, on_status, scratch)
-                for half, half_path in halves
-            ]
-            return "\n\n".join(t for t, _ in results), sum(n for _, n in results)
-        return shift_timestamps(strip_preamble(text), span.start), 1
-
-    def _transcribe_file(
-        self,
-        audio_path: Path,
-        prompt: str,
-        on_status: Callable[[str], None] | None,
-    ) -> str:
-        """Upload one audio file to the Gemini Files API and transcribe it."""
+        """Transcribe audio file using Gemini Files API."""
         client = self._get_client()
 
         if on_status:
@@ -310,7 +189,7 @@ class GeminiProvider:
                 response = retry_on_transient(
                     lambda: client.models.generate_content(
                         model=self._model,
-                        contents=[uploaded, prompt],
+                        contents=[uploaded, self._transcription_prompt],
                         config={
                             "temperature": _TRANSCRIPTION_TEMPERATURE,
                             "max_output_tokens": _MAX_OUTPUT_TOKENS,

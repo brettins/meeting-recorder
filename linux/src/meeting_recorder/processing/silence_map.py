@@ -206,17 +206,13 @@ def build_probe_command(path: Path | str) -> list[str]:
     ]
 
 
-def build_extract_command(
-    source: Path | str, part: Part, destination: Path | str, *, to_end: bool = False
-) -> list[str]:
+def build_extract_command(source: Path | str, part: Part, destination: Path | str) -> list[str]:
     """Copy one span out of the recording without re-encoding it.
 
     ``-c copy`` keeps the original audio exactly, so splitting costs seconds
     rather than a full re-encode and loses no quality. The seek goes before
-    ``-i`` so ffmpeg jumps rather than decoding up to the start point. With
-    ``to_end`` the cut runs to the end of the file, whatever its header says.
+    ``-i`` so ffmpeg jumps rather than decoding up to the start point.
     """
-    stop = [] if to_end else ["-to", f"{part.end:.3f}"]
     return [
         "ffmpeg",
         "-hide_banner",
@@ -225,7 +221,8 @@ def build_extract_command(
         "-y",
         "-ss",
         f"{part.start:.3f}",
-        *stop,
+        "-to",
+        f"{part.end:.3f}",
         "-i",
         str(source),
         "-c",
