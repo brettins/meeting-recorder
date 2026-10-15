@@ -1,4 +1,4 @@
-"""Cutting a long recording into parts for transcription, and joining the transcripts back up."""
+"""Splits a long recording into parts and joins the part transcripts."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from .silence_map import Part, build_extract_command
 PART_SECONDS = 15 * 60
 WHOLE_FILE_MAX_SECONDS = 20 * 60
 MIN_TAIL_SECONDS = 60
+MIN_HALF_SECONDS = 120
 
 _TIMESTAMP = re.compile(r"\[(\d{1,3}):(\d{2}):(\d{2})\]")
 _SPEAKER = re.compile(r"\*\*([^*:]+):\*\*")
@@ -31,16 +32,35 @@ def plan_parts(duration: float, part_seconds: int = PART_SECONDS) -> list[Part]:
 
 
 def extract_parts(source: Path, parts: list[Part], directory: Path, run_fn: RunFn) -> list[Path]:
-    """Cut each span out of *source* into *directory*; raises RuntimeError if ffmpeg fails."""
+    """Cut each span out of *source*, the last to the end of the file; raises if ffmpeg fails.
+
+    The probed length can fall short of the audio (a VBR MP3 with no header), so the last
+    cut ignores it.
+    """
     paths: list[Path] = []
     for index, part in enumerate(parts, 1):
         destination = directory / f"part{index:03d}{source.suffix or '.mp3'}"
-        result = run_fn(build_extract_command(source, part, destination))
+        command = build_extract_command(source, part, destination, to_end=index == len(parts))
+        result = run_fn(command)
         if result.returncode != 0 or not destination.exists() or destination.stat().st_size == 0:
             detail = (result.stderr or "").strip().splitlines()
             raise RuntimeError(f"ffmpeg could not cut part {index}: {detail[-1] if detail else ''}")
         paths.append(destination)
     return paths
+
+
+def can_halve(span: Part) -> bool:
+    """Whether *span* is long enough to cut in two."""
+    return span.duration >= 2 * MIN_HALF_SECONDS
+
+
+def halve(source: Path, span: Part, directory: Path, run_fn: RunFn) -> list[tuple[Part, Path]]:
+    """Cut *source*, which holds *span*, into two files; each comes back with its own span."""
+    middle = span.start + span.duration / 2
+    spans = [Part(span.start, middle), Part(middle, span.end)]
+    relative = [Part(0.0, middle - span.start), Part(middle - span.start, span.duration)]
+    files = extract_parts(source, relative, directory, run_fn)
+    return list(zip(spans, files, strict=True))
 
 
 def format_clock(seconds: float) -> str:
@@ -68,11 +88,11 @@ def strip_preamble(text: str) -> str:
 
 
 def named_speakers(text: str) -> list[str]:
-    """Speaker labels in *text* that are real names rather than "Person N", in order."""
+    """Speaker labels in *text* other than "Person N", in order, without repeats."""
     seen: list[str] = []
     for name in _SPEAKER.findall(text):
         name = name.strip()
-        if name and not _UNNAMED.fullmatch(name) and name not in seen:
+        if name and name != "Note" and not _UNNAMED.fullmatch(name) and name not in seen:
             seen.append(name)
     return seen
 
@@ -92,9 +112,8 @@ def part_prompt(base: str, index: int, count: int, speakers: list[str]) -> str:
 
 
 def blocked_note(part: Part) -> str:
-    """The transcript line standing in for a part Gemini's copyright filter would not return."""
+    """Transcript line for a stretch the copyright filter blocked."""
     return (
-        f"[{format_clock(part.start)}] **Note:** Gemini's copyright filter blocked "
-        f"{format_clock(part.start)} to {format_clock(part.end)} of this recording, "
-        "so that stretch is not transcribed."
+        f"[{format_clock(part.start)}] **Note:** Gemini's copyright filter blocked this "
+        f"stretch, up to {format_clock(part.end)}. Not transcribed."
     )

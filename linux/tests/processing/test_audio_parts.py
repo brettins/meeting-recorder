@@ -9,7 +9,9 @@ import pytest
 
 from meeting_recorder.processing.audio_parts import (
     blocked_note,
+    can_halve,
     extract_parts,
+    halve,
     named_speakers,
     part_prompt,
     plan_parts,
@@ -78,10 +80,14 @@ def test_part_prompt_without_speakers_omits_the_sentence():
     assert "already identified" not in part_prompt("BASE", 1, 4, [])
 
 
-def test_blocked_note_carries_the_start_stamp():
+def test_blocked_note_names_where_the_missing_stretch_ends():
     note = blocked_note(Part(1800.0, 2700.0))
-    assert note.startswith("[00:30:00]")
-    assert "00:30:00 to 00:45:00" in note
+    assert note.startswith("[00:30:00] **Note:**")
+    assert "up to 00:45:00" in note
+
+
+def test_a_note_line_is_not_a_speaker():
+    assert named_speakers(blocked_note(Part(0.0, 60.0))) == []
 
 
 def _ffmpeg_that_writes(returncode: int = 0, write: bool = True):
@@ -111,3 +117,39 @@ def test_extract_parts_raises_when_ffmpeg_fails(tmp_path: Path):
     run, _ = _ffmpeg_that_writes(returncode=1, write=False)
     with pytest.raises(RuntimeError, match="could not cut part 1: boom"):
         extract_parts(tmp_path / "rec.mp3", [Part(0.0, 900.0)], tmp_path, run)
+
+
+def test_only_the_last_cut_runs_to_the_end_of_the_file(tmp_path: Path):
+    run, calls = _ffmpeg_that_writes()
+    parts = plan_parts(2544)
+
+    extract_parts(tmp_path / "rec.mp3", parts, tmp_path, run)
+
+    assert all("-to" in call for call in calls[:-1])
+    assert "-to" not in calls[-1]
+
+
+def test_a_recording_that_probes_short_still_reaches_its_last_second(tmp_path: Path):
+    run, calls = _ffmpeg_that_writes()
+
+    extract_parts(tmp_path / "rec.mp3", plan_parts(2544), tmp_path, run)
+
+    last = calls[-1]
+    assert last[last.index("-ss") + 1] == "1800.000"
+    assert "-to" not in last
+
+
+def test_can_halve_needs_two_minutes_each_side():
+    assert can_halve(Part(0.0, 240.0))
+    assert not can_halve(Part(0.0, 239.0))
+
+
+def test_halve_cuts_relative_to_the_part_file_and_returns_absolute_spans(tmp_path: Path):
+    run, calls = _ffmpeg_that_writes()
+
+    halves = halve(tmp_path / "part2.mp3", Part(900.0, 1500.0), tmp_path, run)
+
+    assert [span for span, _ in halves] == [Part(900.0, 1200.0), Part(1200.0, 1500.0)]
+    assert calls[0][calls[0].index("-to") + 1] == "300.000"
+    assert calls[1][calls[1].index("-ss") + 1] == "300.000"
+    assert "-to" not in calls[1]

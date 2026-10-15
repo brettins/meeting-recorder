@@ -21,13 +21,17 @@ from ...core.retry import retry_on_transient
 from ...services.recording_splitter import _run as run_command
 from ..audio_parts import (
     blocked_note,
+    can_halve,
     extract_parts,
+    halve,
     named_speakers,
     part_prompt,
     plan_parts,
     shift_timestamps,
     strip_preamble,
 )
+from ..part_cache import PartCache
+from ..silence_map import Part
 from ..upload_audio import probe_duration
 
 logger = logging.getLogger(__name__)
@@ -55,8 +59,6 @@ _TRANSCRIPTION_THINKING_BUDGET = 128
 # The API caps this at the model's own limit, so it is safe to set high.
 _MAX_OUTPUT_TOKENS = 65_536
 
-
-_PART_ATTEMPTS = 3
 
 # Bounds on the Files API calls, which otherwise wait forever on a dead connection.
 _FILE_CALL_TIMEOUT_MS = 60_000
@@ -147,6 +149,7 @@ class GeminiProvider:
         transcription_prompt: str = "",
         summarization_prompt: str = "",
         timeout_minutes: int = 3,
+        part_cache: PartCache | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
@@ -154,6 +157,7 @@ class GeminiProvider:
         self._transcription_prompt = transcription_prompt or GEMINI_TRANSCRIPTION_PROMPT
         self._summarization_prompt = summarization_prompt or SUMMARIZATION_PROMPT
         self._generate_timeout_ms = timeout_minutes * 60_000
+        self._part_cache = part_cache or PartCache()
         self._client: Any = None
 
     def _get_client(self) -> Any:
@@ -181,6 +185,7 @@ class GeminiProvider:
         if len(parts) < 2:
             return self._transcribe_file(audio_path, self._transcription_prompt, on_status)
 
+        self._part_cache.prune()
         with tempfile.TemporaryDirectory(prefix="meeting-parts-") as scratch:
             try:
                 files = extract_parts(audio_path, parts, Path(scratch), run_command)
@@ -190,7 +195,7 @@ class GeminiProvider:
 
             segments: list[str] = []
             speakers: list[str] = []
-            last_error: RecitationBlocked | None = None
+            saved: list[str] = []
             transcribed = 0
             for index, (part, path) in enumerate(zip(parts, files, strict=True), 1):
                 label = f"Part {index} of {len(parts)}"
@@ -199,39 +204,63 @@ class GeminiProvider:
                     if on_status:
                         on_status(f"{label}: {message}")
 
-                prompt = part_prompt(self._transcription_prompt, index, len(parts), speakers)
-                try:
-                    text = self._transcribe_with_retries(path, prompt, label, part_status)
-                except RecitationBlocked as exc:
-                    last_error = exc
-                    logger.warning("%s stayed blocked by the copyright filter", label)
-                    segments.append(blocked_note(part))
-                    continue
-                text = shift_timestamps(strip_preamble(text), part.start)
+                key = self._part_cache.key(
+                    path, self._model, self._transcription_prompt, f"{index}/{len(parts)}"
+                )
+                text = self._part_cache.get(key)
+                if text is not None:
+                    part_status("Using the transcript saved from the last attempt")
+                    count = 1
+                else:
+                    prompt = part_prompt(self._transcription_prompt, index, len(parts), speakers)
+                    text, count = self._transcribe_span(
+                        path, part, prompt, part_status, Path(scratch)
+                    )
+                    if count:
+                        self._part_cache.put(key, text)
+                if count:
+                    saved.append(key)
+                    transcribed += count
                 speakers = [*speakers, *(n for n in named_speakers(text) if n not in speakers)]
                 segments.append(text)
-                transcribed += 1
 
-        if last_error is not None and not transcribed:
-            raise last_error
+        if not transcribed:
+            raise RecitationBlocked(
+                "Gemini's copyright filter blocked every part of the recording. "
+                "Try again; it does not always block the same audio."
+            )
+        self._part_cache.discard(saved)
         return "\n\n".join(segments)
 
-    def _transcribe_with_retries(
+    def _transcribe_span(
         self,
         path: Path,
+        span: Part,
         prompt: str,
-        label: str,
         on_status: Callable[[str], None],
-    ) -> str:
-        """Transcribe one part, asking again when the copyright filter blocks it."""
-        for attempt in range(1, _PART_ATTEMPTS + 1):
+        scratch: Path,
+    ) -> tuple[str, int]:
+        """Transcribe one span; if the copyright filter blocks it, try each half separately.
+
+        Returns the text with absolute timestamps and how many spans were transcribed.
+        """
+        try:
+            text = self._transcribe_file(path, prompt, on_status)
+        except RecitationBlocked:
+            logger.warning("%s-%s blocked by the copyright filter", span.start, span.end)
+            if not can_halve(span):
+                return blocked_note(span), 0
             try:
-                return self._transcribe_file(path, prompt, on_status)
-            except RecitationBlocked:
-                if attempt == _PART_ATTEMPTS:
-                    raise
-                logger.warning("%s blocked by the copyright filter (attempt %d)", label, attempt)
-        raise AssertionError("unreachable")
+                halves = halve(path, span, Path(tempfile.mkdtemp(dir=scratch)), run_command)
+            except Exception as exc:
+                logger.warning("Could not halve a blocked span (%s)", exc)
+                return blocked_note(span), 0
+            results = [
+                self._transcribe_span(half_path, half, prompt, on_status, scratch)
+                for half, half_path in halves
+            ]
+            return "\n\n".join(t for t, _ in results), sum(n for _, n in results)
+        return shift_timestamps(strip_preamble(text), span.start), 1
 
     def _transcribe_file(
         self,
