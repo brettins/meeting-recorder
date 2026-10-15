@@ -49,6 +49,7 @@ from ..core.controls import (
     controls_for_state,
     title_editable,
 )
+from ..core.edit_sync import remote_tags_to_show, remote_title_to_show
 from ..core.errors import error_presentation
 from ..core.window_close import CLOSE_HIDE, resolve_close_action
 from ..core.wire import Snapshot, snapshot_from_json
@@ -91,10 +92,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._recording_mode: str = "headphones"
         self._snapshot = Snapshot()
         # Guards the title entry against re-emitting "changed" while a snapshot
-        # is being rendered into it; _editing_title marks a local edit the
-        # daemon has not echoed back yet.
+        # is being rendered into it. _unacked_edits counts title/tag edits the
+        # daemon has not replied to yet (see core/edit_sync.py).
         self._syncing = False
-        self._editing_title = False
+        self._unacked_edits = 0
 
         self._build_ui()
         # Paint the current daemon state immediately, then live-update on signals.
@@ -410,35 +411,30 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_title_changed(self, *_) -> None:
         if self._syncing:
             return
-        self._editing_title = True
-        self._engine.set_title(self._title_entry.get_text().strip())
+        self._send_edit(self._engine.set_title, self._title_entry.get_text().strip())
+
+    def _send_edit(self, send, value) -> None:
+        self._unacked_edits += 1
+        send(value, self._edit_acknowledged)
+
+    def _edit_acknowledged(self) -> None:
+        self._unacked_edits = max(self._unacked_edits - 1, 0)
+        if self._unacked_edits == 0:
+            self._sync_title_and_tags(self._snapshot)
 
     def _sync_title_and_tags(self, snap: Snapshot) -> None:
-        """Render the daemon's title/tags without fighting the user's typing.
-
-        A snapshot in flight carries whatever the daemon knew a moment ago, so
-        writing it into the entry can undo a keystroke that overtook it. The
-        guard is "has this window edited the title since the daemon last agreed
-        with it", not widget focus: focus depends on the window manager having
-        activated the toplevel, which is false in plenty of situations where the
-        user is still the one driving.
-
-        The daemon clearing the title because the recording ended overrides that
-        — there is no edit left to protect, and skipping it left the finished
-        meeting's name sitting in the box.
-        """
-        if snap.title == self._title_entry.get_text():
-            self._editing_title = False  # the daemon has caught up
-        elif (snap.state == "idle" and not snap.title) or not self._editing_title:
-            self._editing_title = False
+        """Render the daemon's title/tags, but never over an edit it has not seen yet."""
+        shown = remote_title_to_show(self._title_entry.get_text(), snap.title, self._unacked_edits)
+        if shown is not None:
             self._syncing = True
             try:
-                self._title_entry.set_text(snap.title)
+                self._title_entry.set_text(shown)
             finally:
                 self._syncing = False
 
-        if snap.tags != self._tags:
-            self._tags = list(snap.tags)
+        shown_tags = remote_tags_to_show(self._tags, snap.tags, self._unacked_edits)
+        if shown_tags is not None:
+            self._tags = shown_tags
             self._render_tag_chips()
             # Never while the popover is open: replacing it under the pointer
             # dismisses it mid-click.
@@ -476,7 +472,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_tags_changed(self, names: list[str]) -> None:
         self._tags = known_tags_only(names, self._tag_registry)
-        self._engine.set_tags(self._tags)
+        self._send_edit(self._engine.set_tags, list(self._tags))
 
     def _on_tag_created(self, name: str) -> None:
         registry = add_tag(self._tag_registry, name)
