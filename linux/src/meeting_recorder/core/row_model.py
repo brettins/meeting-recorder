@@ -217,4 +217,6 @@ def _job_subtitle(job, state: str) -> str:
         from .errors import error_summary
 
         return f"Error: {error_summary(job.error_msg or 'Error')}"
+    if state == READY:
+        return "Done"
     return getattr(job, "status_text", "") or "Processing…"

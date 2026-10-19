@@ -357,6 +357,9 @@ class TestFinishedWorkStaysOnScreen:
         job = make_job(status=JobStatus.DONE)
         assert rm.row_from_job(job).job_id == job.job_id
 
+    def test_a_finished_job_says_done(self):
+        assert rm.row_from_job(make_job(status=JobStatus.DONE)).subtitle == "Done"
+
     def test_a_finished_job_offers_something_to_do(self):
         # A row with no actions is a row with no reason to still be there.
         actions = rm.row_from_job(make_job(status=JobStatus.DONE)).actions
