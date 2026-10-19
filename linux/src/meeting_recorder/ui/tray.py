@@ -25,7 +25,8 @@ import gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, Gio, GLib
 
-from .tray_model import assign_menu_ids, build_menu_model, icon_for_state
+from ..config.defaults import APP_NAME
+from .tray_model import assign_menu_ids, build_menu_model, icon_for_state, tray_signature
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ _TRAY_ICON_SIZES = (24, 32, 48, 64)
 # (width, height, ARGB-bytes) tuples are expensive to rebuild per property read,
 # and the host re-reads on every NewIcon, so memoise per icon basename.
 _pixmap_cache: dict[str, list] = {}
+_pixmap_variant_cache: dict[str, GLib.Variant] = {}
 
 
 def _pixbuf_to_argb(pixbuf: GdkPixbuf.Pixbuf) -> tuple:
@@ -87,6 +89,13 @@ def _load_icon_pixmaps(name: str) -> list:
         pixmaps.append(_pixbuf_to_argb(pixbuf))
     _pixmap_cache[name] = pixmaps
     return pixmaps
+
+
+def _icon_pixmap_variant(name: str) -> GLib.Variant:
+    """The ``IconPixmap`` value for ``name``. Built once; a build takes ~100 ms."""
+    if name not in _pixmap_variant_cache:
+        _pixmap_variant_cache[name] = GLib.Variant("a(iiay)", _load_icon_pixmaps(name))
+    return _pixmap_variant_cache[name]
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +227,7 @@ class TrayIcon:
         self._recording_state = "idle"
         self._jobs: list = []
         self._icon_name = icon_for_state("idle", [])
+        self._signature: tuple | None = None
 
         # Menu state: materialised item list + a monotonically increasing
         # revision the host watches via LayoutUpdated. ``_next_menu_id`` never
@@ -246,8 +256,12 @@ class TrayIcon:
     # ------------------------------------------------------------------
 
     def update(self, recording_state: str, jobs: list) -> None:
-        self._recording_state = recording_state
         self._jobs = jobs
+        signature = tray_signature(recording_state, jobs)
+        if signature == self._signature:
+            return
+        self._signature = signature
+        self._recording_state = recording_state
         self._icon_name = icon_for_state(recording_state, jobs)
         self._menu_items = self._materialize_menu()
         self._revision += 1
@@ -346,28 +360,30 @@ class TrayIcon:
     # ------------------------------------------------------------------
 
     def _sni_get_property(self, _conn, _sender, _path, _iface, prop):
-        pixmaps = _load_icon_pixmaps(self._icon_name)
-        # Prefer the ARGB pixmaps and send an empty IconName: several SNI hosts
-        # (notably the GNOME AppIndicator extension) prefer IconName and, when it
-        # fails to resolve in the icon theme — which it won't when running from
-        # source — show a fallback placeholder *instead of* falling back to
-        # IconPixmap. An empty name forces every host onto our per-state pixmaps.
-        # Only if the bundled pixmaps fail to load do we fall back to the icon
-        # name, so the tray still shows *something* rather than going invisible.
-        values = {
-            "Category": GLib.Variant("s", "ApplicationStatus"),
-            "Id": GLib.Variant("s", "meeting-recorder"),
-            "Title": GLib.Variant("s", "Meeting Recorder"),
-            "Status": GLib.Variant("s", "Active"),
-            "WindowId": GLib.Variant("u", 0),
-            "IconName": GLib.Variant("s", "" if pixmaps else self._icon_name),
-            "IconPixmap": GLib.Variant("a(iiay)", pixmaps),
-            "IconThemePath": GLib.Variant("s", ""),
-            "ItemIsMenu": GLib.Variant("b", False),
-            "Menu": GLib.Variant("o", _MENU_PATH),
-            "ToolTip": GLib.Variant("(sa(iiay)ss)", ("", [], "Meeting Recorder", "")),
-        }
-        return values.get(prop)
+        # GetAll calls this once per property (11). Build only the one asked for.
+        if prop == "IconPixmap":
+            return _icon_pixmap_variant(self._icon_name)
+        if prop == "IconName":
+            # Prefer the ARGB pixmaps and send an empty IconName: several SNI hosts
+            # (notably the GNOME AppIndicator extension) prefer IconName and, when it
+            # fails to resolve in the icon theme — which it won't when running from
+            # source — show a fallback placeholder *instead of* falling back to
+            # IconPixmap. Only if the bundled pixmaps fail to load do we fall back to
+            # the icon name, so the tray still shows *something*.
+            has_pixmaps = bool(_load_icon_pixmaps(self._icon_name))
+            return GLib.Variant("s", "" if has_pixmaps else self._icon_name)
+        static = {
+            "Category": ("s", "ApplicationStatus"),
+            "Id": ("s", "meeting-recorder"),
+            "Title": ("s", APP_NAME),
+            "Status": ("s", "Active"),
+            "WindowId": ("u", 0),
+            "IconThemePath": ("s", ""),
+            "ItemIsMenu": ("b", False),
+            "Menu": ("o", _MENU_PATH),
+            "ToolTip": ("(sa(iiay)ss)", ("", [], APP_NAME, "")),
+        }.get(prop)
+        return GLib.Variant(*static) if static else None
 
     def _sni_method(self, _conn, _sender, _path, _iface, method, _params, invocation):
         # Left-click → open/focus the window. Runs on the daemon main loop, so

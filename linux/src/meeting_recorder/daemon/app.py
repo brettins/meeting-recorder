@@ -125,10 +125,8 @@ class Daemon:
             eng.stop()
         elif action == commands.CANCEL_SAVE:
             eng.cancel_and_save()
-        elif action == commands.CANCEL:
-            eng.cancel_and_discard()
-        elif action in (commands.SHOW_WINDOW, commands.USE_EXISTING):
-            # Both open the window; from there the user records or picks a file.
+        elif action in (commands.SHOW_WINDOW, commands.USE_EXISTING, commands.CANCEL):
+            # The window finishes these: record, pick a file, or Discard, which asks first.
             self._service.open_window()
         elif action == commands.QUIT:
             self.quit()

@@ -6,7 +6,8 @@ Reuses the app's ``create_summarization_provider`` so notes match the applet's
 summarization stage — no re-upload/re-transcription. The model defaults to your config.json
 when --model is omitted. Output lands in <repo>/tmp/test-<timestamp>/notes.md.
 
-    scripts/test-summarization-gemini.py --transcript /path/transcript.md --model gemini-flash-latest
+    scripts/test-summarization-gemini.py --transcript /path/transcript.md \
+        --model gemini-flash-latest
 """
 
 from __future__ import annotations

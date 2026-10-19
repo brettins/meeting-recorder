@@ -20,9 +20,12 @@ This repository is a monorepo with two independent apps — a Linux desktop appl
 - **Summarize** into structured Markdown notes with Google Gemini or local Ollama
 - **Summarize from the library** — re-run summarization for any past meeting from the meetings browser
 - **Local models** — run fully offline with no API key required
-- **Readable failures** — a failed job shows the first line of the error in its row, with a **Details** button for the full message and a Copy button; the whole text is also on the row's tooltip
+- **One meeting list** — recording, transcribing, failed and finished are states of the *same* row, not separate views. The library shows every meeting with its live state (a spinner and the current pipeline step while it processes, **Cancel**/**Retry** where they apply); the Record tab shows those same rows filtered to whatever is still in flight.
+- **Discarding asks first** — **Discard recording…** in the window asks before deleting the audio; the tray item of the same name opens the window. **Cancel (save recording)** keeps the audio.
+- **Readable failures** — a failed job shows the first line of the error in its row, with a **Details** button for the full message and a Copy button; the whole text is also on the row's tooltip. A failed job's row goes away by itself once its meeting folder has a `transcript.md` written after the job began.
 - **Customizable prompts** — edit transcription and summarization prompts in Settings
-- **Tags** — organise meetings with your own colour-coded tags. Tag a recording **before it starts** from the tag button in the Record tab's title row, or afterwards from the tag button on its row in the library. Filter the library to one tag (or to untagged meetings), and add, rename, recolour or delete tags from the manage-tags button in the library toolbar. Tags are written when the recording folder is created, so they survive a failed transcription, and they live in that meeting's `meeting.json` so they travel with the folder.
+- **Name and tag while you record** — the title and tag controls stay live for the whole recording, not just before it starts. Both are saved to the meeting's `meeting.json` the moment you set them; the folder rename a new title implies is queued and applied when the recording stops, since the recorder holds the folder open until then.
+- **Tags** — organise meetings with your own colour-coded tags. Tag a recording **before or during** it from the tag button in the Record tab's title row, or afterwards from the tag button on its row in the library. Filter the library to one tag (or to untagged meetings), and add, rename, recolour or delete tags from the manage-tags button in the library toolbar. Tags are written as soon as you choose them, so they survive a failed transcription, and they live in that meeting's `meeting.json` so they travel with the folder.
 - **System tray** integration — a StatusNotifierItem (SNI) exposed over D-Bus; left-click opens the window where the host supports it, otherwise opens the menu
 - **Lightweight background daemon** — the app runs as a small GTK-free tray daemon, so recording, transcription, and model installs keep running in the background even with no window open. Closing the window returns to the tray; reopening (tray "Open" or the app icon) shows the current state (an in-progress model install still shows its progress).
 - **Low memory mode** — by default the window stays loaded in the background so reopening is instant; enable Low memory mode (Settings → General) to unload it on close instead, so the tray daemon idles at roughly a fifth of the memory at the cost of a brief delay when you reopen
@@ -57,13 +60,76 @@ The base install is **Gemini-only and minimal** — no local engines or GPU libr
 | Service | Requirement |
 |---|---|
 | **Gemini** (transcription or summarization) | Free API key from [aistudio.google.com](https://aistudio.google.com) — no local install |
-
-> Your API key is stored in the system keyring (GNOME Keyring / KWallet) when one is available, falling back to a permission-restricted config file otherwise.
 | **Whisper** (local transcription) | Engine (`faster-whisper`) installed on opt-in; model downloaded from HuggingFace (~500 MB – 3 GB); **NVIDIA GPU or CPU** |
 | **whisper.cpp** (local transcription, GPU) | Engine built from source on opt-in with the detected backend — **AMD (ROCm/Vulkan), Apple (Metal), NVIDIA (CUDA), or CPU**; GGML model downloaded from HuggingFace |
 | **Ollama** (local summarization) | [Ollama](https://ollama.com) installed and running (`ollama serve`); uses NVIDIA/AMD/Apple GPU automatically |
 
+> Your API key is stored in the system keyring (GNOME Keyring / KWallet) when one is available, falling back to a permission-restricted config file otherwise.
+
+### Recording limits
+
+A recording nobody stops runs until the disk does, so two guards sit in
+**Settings → General → Recording limits**:
+
+- **Maximum recording length** (default 3 hours) stops the recording outright.
+- **Stop when nothing is heard** watches the recorded audio and escalates: after an hour of
+  recording, a notification at 10 minutes of silence, a warning 5 minutes before the end, and a
+  stop at 30 minutes. Any sound resets it, so a meeting that goes quiet and picks up again is
+  never cut short.
+
+Silence means the microphone and the system audio are *both* quiet, so a video or music playing
+keeps the recording alive. Set either limit to 0 to turn it off.
+
+### Silence is stripped before transcription
+
+Long pauses cost upload time and model budget for nothing, so a trimmed copy is what gets sent —
+your recording is never modified. A real example: an 18-minute standup was sent as 10 minutes.
+
+Turn it off with **Remove silence before transcribing** in Settings → General.
+
+### Splitting a long recording
+
+A recorder left running overnight ends up holding several meetings with dead hours between
+them. The scissors icon on any meeting with audio reads the recording, reports what it found —
+how many meetings, how long each one is, how much audio would actually be transcribed — and
+lets you split it into separate meetings or keep it as one and process it as is.
+
+A quiet stretch of at least 10 minutes is suggested as a split point. Each suggestion can be
+turned off, and nothing is cut until you confirm. The original recording is always kept.
+
+### Filing meetings into Notion
+
+A finished meeting can be pushed onto a page in a Notion meetings database: the notes become
+page content, the transcript is folded into a collapsed toggle, and the recording is attached
+to a files property on the page.
+
+Set it up in **Settings → Notion**:
+
+1. In the Notion workspace you want to file into, open **Settings → Connections → Develop or
+   manage integrations**, create an internal integration, and copy its token.
+2. Open the meetings database in Notion, and from its **•••** menu → **Connections**, share it
+   with that integration.
+3. Add a workspace in Settings → Notion with a name, the database link, the token, and the name
+   of the files property that should hold the recording (for example `Recording`).
+
+A token belongs to one workspace, so add one entry per workspace. Tokens are stored in the
+system keyring, never in the config file.
+
+Then click the send icon on any meeting in the library. The picker lists the pages in that
+database with the one dated the same day already selected; creating a new page is a separate
+button.
+
+> Notion accepts 5 MiB per file on a free workspace and 5 GiB on a paid one. A recording over
+> that limit is reported and the notes are still filed.
+
+
 ### Installation
+
+> **Updating without a password.** A user-local install (Option 2 below) puts everything under
+> `$HOME`, so `linux/install.sh --skip-deps` replaces the app with no `sudo` at all — it skips the
+> three first-install steps that need root. Settings → General → Updates does exactly that from
+> inside the app, then offers to restart. A package install is owned by your package manager and
+> shows that instead of an Update button.
 
 #### Option 1: native package (recommended)
 

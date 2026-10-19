@@ -9,7 +9,12 @@ The helpers live in ``tray_model`` (gi-free) so this test runs without PyGObject
 — the CI test environment installs only pytest.
 """
 
-from meeting_recorder.ui.tray_model import assign_menu_ids, build_menu_model, icon_for_state
+from meeting_recorder.ui.tray_model import (
+    assign_menu_ids,
+    build_menu_model,
+    icon_for_state,
+    tray_signature,
+)
 
 
 def _labels(items):
@@ -110,3 +115,23 @@ class TestAssignMenuIds:
             assert new_nxt > nxt
             seen |= ids
             nxt = new_nxt
+
+
+class TestTraySignature:
+    def test_ignores_which_cancel_function_a_job_carries(self):
+        first = tray_signature("recording", [("Standup", lambda: 1)])
+        second = tray_signature("recording", [("Standup", lambda: 2)])
+        assert first == second
+
+    def test_changes_with_state_or_job_labels(self):
+        base = tray_signature("recording", [("Standup", lambda: None)])
+        assert tray_signature("paused", [("Standup", lambda: None)]) != base
+        assert tray_signature("recording", []) != base
+        assert tray_signature("recording", [("Sync", lambda: None)]) != base
+
+
+def test_the_tray_discard_item_has_the_same_label_as_the_window_button():
+    for state in ("recording", "paused"):
+        items = build_menu_model(state, [])
+        discard = [i for i in items if i.get("action") == "cancel"]
+        assert [i["label"] for i in discard] == ["Discard recording…"]

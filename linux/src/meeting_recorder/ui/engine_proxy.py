@@ -108,7 +108,18 @@ class EngineProxy:
     # Command calls
     # ------------------------------------------------------------------
 
-    def _call(self, method: str, body=None) -> None:
+    def _call(self, method: str, body=None, on_done: Callable[[], None] | None = None) -> None:
+        """Fire a command; ``on_done`` runs once the daemon has replied (or failed)."""
+
+        def finished(conn, result) -> None:
+            try:
+                conn.call_finish(result)
+            except GLib.Error as exc:
+                logger.error("Engine.%s failed: %s", method, exc)
+            finally:
+                if on_done is not None:
+                    on_done()
+
         self._conn.call(
             ENGINE_NAME,
             ENGINE_PATH,
@@ -119,7 +130,7 @@ class EngineProxy:
             Gio.DBusCallFlags.NONE,
             -1,
             None,
-            None,  # fire-and-forget
+            finished if on_done is not None else None,
         )
 
     def _call_sync(self, method: str, body=None, reply_type: str = "(s)"):
@@ -144,11 +155,11 @@ class EngineProxy:
     def start_recording(self, mode: str) -> None:
         self._call("StartRecording", GLib.Variant("(s)", (mode,)))
 
-    def set_title(self, title: str) -> None:
-        self._call("SetTitle", GLib.Variant("(s)", (title,)))
+    def set_title(self, title: str, on_done: Callable[[], None] | None = None) -> None:
+        self._call("SetTitle", GLib.Variant("(s)", (title,)), on_done)
 
-    def set_tags(self, tags: list[str]) -> None:
-        self._call("SetTags", GLib.Variant("(as)", (tags,)))
+    def set_tags(self, tags: list[str], on_done: Callable[[], None] | None = None) -> None:
+        self._call("SetTags", GLib.Variant("(as)", (tags,)), on_done)
 
     def pause(self) -> None:
         self._call("Pause")

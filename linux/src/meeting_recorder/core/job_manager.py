@@ -7,7 +7,7 @@ nothing re-offered it. JobManager persists every change to
 ``$XDG_STATE_HOME/meeting-recorder/jobs.json`` (atomic write), and on startup
 re-offers interrupted work: jobs that were PROCESSING when the app died come
 back as ERROR rows ("interrupted") with a Retry button, ERROR jobs are
-restored as-is, and DONE jobs are dropped (finished work is not re-shown).
+restored as-is, and DONE jobs are kept for a few days (see ``finished_to_keep``).
 
 Main-thread only, like all job mutations (see core/task_runner.py) — no
 locking needed.
@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from .job import Job, JobStatus
@@ -27,6 +29,9 @@ logger = logging.getLogger(__name__)
 INTERRUPTED_MSG = "Interrupted — the app exited while this job was running"
 
 _FORMAT_VERSION = 1
+
+KEEP_FINISHED = 5
+KEEP_FINISHED_SECONDS = 3 * 24 * 3600
 
 
 def restore_status(persisted: str) -> tuple[JobStatus, str | None] | None:
@@ -38,7 +43,50 @@ def restore_status(persisted: str) -> tuple[JobStatus, str | None] | None:
         return (JobStatus.ERROR, INTERRUPTED_MSG)
     if persisted == JobStatus.ERROR.value:
         return (JobStatus.ERROR, None)
-    return None  # DONE (or unknown) — nothing to re-offer
+    if persisted == JobStatus.DONE.value:
+        return (JobStatus.DONE, None)
+    return None
+
+
+def finished_to_keep(jobs: Iterable[Job], now: float) -> list[Job]:
+    """The DONE jobs worth keeping on screen: the newest few, none older than a few days."""
+    finished = [
+        j
+        for j in jobs
+        if j.status is JobStatus.DONE
+        and j.finished_at is not None
+        and now - j.finished_at <= KEEP_FINISHED_SECONDS
+    ]
+    finished.sort(key=lambda j: j.finished_at or 0.0, reverse=True)
+    return finished[:KEEP_FINISHED]
+
+
+# File times come from a coarser clock than time.time().
+MTIME_SLACK_SECONDS = 2.0
+
+
+def _started_at(job: Job) -> float | None:
+    """Job start time; the audio file's mtime for jobs saved without one."""
+    if job.started_at is not None:
+        return job.started_at
+    try:
+        return job.audio_path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _resolved_by_transcript(job: Job) -> bool:
+    """A failed job whose meeting has a non-empty transcript.md written since the job began."""
+    if job.status is not JobStatus.ERROR or job.cancelled:
+        return False
+    started = _started_at(job)
+    if started is None:
+        return False
+    try:
+        info = job.transcript_path.stat()
+    except OSError:
+        return False
+    return info.st_size > 0 and info.st_mtime >= started - MTIME_SLACK_SECONDS
 
 
 def _default_state_dir() -> Path:
@@ -46,10 +94,22 @@ def _default_state_dir() -> Path:
     return Path(base) / "meeting-recorder"
 
 
+def _number(entry: Mapping[str, object], key: str) -> float | None:
+    value = entry.get(key)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _finished_at(entry: Mapping[str, object]) -> float | None:
+    return _number(entry, "finished_at")
+
+
 class JobManager:
     """Job list + jobs.json persistence. All methods are main-thread only."""
 
-    def __init__(self, state_dir: Path | None = None) -> None:
+    def __init__(
+        self, state_dir: Path | None = None, clock: Callable[[], float] = time.time
+    ) -> None:
+        self._clock = clock
         self._state_dir = state_dir or _default_state_dir()
         self._file = self._state_dir / "jobs.json"
         self._jobs: list[Job] = []
@@ -74,6 +134,7 @@ class JobManager:
             transcript_path=transcript_path,
             notes_path=notes_path,
             label=label,
+            started_at=self._clock(),
         )
         self.add(job)
         return job
@@ -90,17 +151,31 @@ class JobManager:
     def mark_done(self, job: Job) -> None:
         job.status = JobStatus.DONE
         job.error_msg = None
+        job.finished_at = self._clock()
+        self._drop_old_finished()
         self._persist()
 
     def mark_error(self, job: Job, msg: str) -> None:
         job.status = JobStatus.ERROR
         job.error_msg = msg
+        job.finished_at = None
         self._persist()
 
     def mark_processing(self, job: Job) -> None:
         job.status = JobStatus.PROCESSING
         job.error_msg = None
+        job.finished_at = None
+        job.started_at = self._clock()
         self._persist()
+
+    def drop_resolved_errors(self) -> list[Job]:
+        """Remove failed jobs whose transcript.md was written since the job began; return them."""
+        resolved = [j for j in self._jobs if _resolved_by_transcript(j)]
+        for job in resolved:
+            self._jobs.remove(job)
+        if resolved:
+            self._persist()
+        return resolved
 
     def persist(self) -> None:
         """Explicit persistence hook (e.g. after path updates from auto-title)."""
@@ -112,7 +187,8 @@ class JobManager:
         """Load jobs.json, restore re-offerable jobs, and return them.
 
         Interrupted (PROCESSING) jobs come back as ERROR + Retry; ERROR jobs
-        are restored as-is; DONE jobs are dropped. Corrupt or missing state
+        are restored as-is; DONE jobs stay while they are among the newest few
+        and recent, and their folder still exists. Corrupt or missing state
         starts empty — never blocks startup.
         """
         try:
@@ -143,20 +219,32 @@ class JobManager:
                     label=str(entry["label"]),
                     status=status,
                     error_msg=forced_msg or entry.get("error_msg"),
+                    finished_at=_finished_at(entry) if status is JobStatus.DONE else None,
+                    started_at=_number(entry, "started_at"),
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 logger.warning("Skipping malformed persisted job %r: %s", entry, exc)
                 continue
             restored.append(job)
 
+        kept = set(map(id, finished_to_keep(restored, self._clock())))
+        restored = [
+            j
+            for j in restored
+            if j.status is not JobStatus.DONE or (id(j) in kept and j.audio_path.parent.is_dir())
+        ]
         self._jobs = restored
         try:
             next_id = int(data.get("next_id", 0))
         except (TypeError, ValueError):
             next_id = 0
         self._next_id = max([next_id] + [j.job_id + 1 for j in restored])
-        self._persist()  # drop DONE entries from disk right away
+        self._persist()  # drop what was not kept from disk right away
         return list(restored)
+
+    def _drop_old_finished(self) -> None:
+        kept = set(map(id, finished_to_keep(self._jobs, self._clock())))
+        self._jobs = [j for j in self._jobs if j.status is not JobStatus.DONE or id(j) in kept]
 
     def _persist(self) -> None:
         try:
@@ -173,6 +261,8 @@ class JobManager:
                         "label": j.label,
                         "status": j.status.value,
                         "error_msg": j.error_msg,
+                        "finished_at": j.finished_at,
+                        "started_at": j.started_at,
                     }
                     for j in self._jobs
                     if not j.cancelled

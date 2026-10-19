@@ -71,6 +71,12 @@ class Engine:
         self._status = "Ready to record"
         self._elapsed = 0
         self._countdown = 0
+        # Title/tags for the recording being set up or already running. The
+        # daemon holds them (not the window) so the tray, a second window, and a
+        # window reopened mid-recording all render the same meeting.
+        self._pending_title: str | None = None
+        self._pending_tags: list[str] = []
+        self._was_idle = True
         self._job_status_text: dict[int, str] = {}
         # Each processing job runs in a short-lived child process so the heavy
         # Gemini/Whisper stack never accumulates in the daemon. Tracked by
@@ -91,6 +97,7 @@ class Engine:
             on_countdown=self._on_countdown_tick,
             on_timer=self._on_tick,
             on_recorder_error=self._on_recording_error,
+            on_auto_notice=self._on_auto_notice,
         )
         self._job_manager = job_manager or JobManager()
 
@@ -113,12 +120,23 @@ class Engine:
         ]
 
     def snapshot_json(self) -> str:
+        for job in self._job_manager.drop_resolved_errors():
+            self._job_status_text.pop(job.job_id, None)
         state = self._controller.state
         wire_state = "countdown" if state == State.COUNTDOWN else _STATE_NAMES.get(state, "idle")
         job_dicts = [
             job_to_dict(j, self._job_status_text.get(j.job_id)) for j in self._job_manager.jobs
         ]
-        return snapshot_to_json(wire_state, self._status, self._elapsed, self._countdown, job_dicts)
+        return snapshot_to_json(
+            wire_state,
+            self._status,
+            self._elapsed,
+            self._countdown,
+            job_dicts,
+            title=self._pending_title or "",
+            tags=list(self._pending_tags),
+            recording_dir=getattr(self._controller, "meeting_dir", ""),
+        )
 
     def restore_persisted_jobs(self) -> None:
         """Re-offer jobs from the previous session (crash/quit recovery)."""
@@ -139,23 +157,25 @@ class Engine:
             self._emit_error(key_missing)
             return
         self.last_mode = mode
-        self._controller.start(cfg, mode, self._pending_title, self._pending_tags)
+        self._controller.start(cfg, mode, self._pending_title, self._pending_tags or None)
 
     last_mode: str | None = None  # the mode of the last recording started this session
 
-    # The window sends the meeting title with the start command; keep the last
-    # one so a tray-initiated start still records without a title.
-    _pending_title: str | None = None
-
     def set_title(self, title: str | None) -> None:
-        self._pending_title = title or None
+        """Name the next recording, or retitle the running one.
 
-    # Tags chosen on the Record tab before the recording starts, kept alongside
-    # the title so a tray-initiated start still applies the last selection.
-    _pending_tags: list[str] | None = None
+        While recording, the controller writes it to meeting.json immediately and
+        queues the folder rename for when ffmpeg lets go of the directory.
+        """
+        self._pending_title = (title or "").strip() or None
+        self._controller.set_title(self._pending_title)
+        self._changed()
 
     def set_tags(self, tags: list[str] | None) -> None:
-        self._pending_tags = list(tags) if tags else None
+        """Tag the next recording, or retag the running one (written at once)."""
+        self._pending_tags = list(tags or [])
+        self._controller.set_tags(self._pending_tags)
+        self._changed()
 
     def pause(self) -> None:
         self._controller.pause()
@@ -263,10 +283,21 @@ class Engine:
     # ------------------------------------------------------------------
 
     def _on_state(self, state: State, status: str) -> None:
-        self._status = status or self._status
+        if status:
+            self._status = status
+        elif state == State.IDLE:
+            # Committing a recording reports IDLE with no message. Falling back
+            # to the previous status there left "Recording… (headphones mode)"
+            # on screen after the recording had stopped.
+            self._status = "Ready to record"
         if state == State.IDLE:
             self._elapsed = 0
             self._countdown = 0
+            # Skip on the second IDLE after cancel-and-save: the next one may already be titled.
+            if not self._was_idle:
+                self._pending_title = None
+                self._pending_tags = []
+        self._was_idle = state == State.IDLE
         self._changed()
 
     def _on_recording_committed(self, pending: PendingRecording) -> None:
@@ -301,6 +332,8 @@ class Engine:
         idle_call(self._update_timer, elapsed)
 
     def _update_timer(self, elapsed: int) -> None:
+        if self._controller.state not in (State.RECORDING, State.PAUSED):
+            return  # a tick queued before the recording ended
         self._elapsed = elapsed
         self._changed()
 
@@ -327,22 +360,46 @@ class Engine:
             self._controller.wait_until_stopped()
             if j.cancelled:
                 return
+            final = self._controller.take_final_paths()
+            if final is not None:
+                idle_call(self._adopt_recording_paths, j, final)
             idle_call(self._launch_processor, j)
 
-        self._runner.submit(_wait_then_launch, job, description=f"await stop: {job.label}")
+        self._runner.submit(
+            _wait_then_launch,
+            job,
+            on_error=lambda exc, j=job: self._on_processing_error(
+                j, f"Could not finish saving the recording: {exc}"
+            ),
+            description=f"await stop: {job.label}",
+        )
+
+    def _adopt_recording_paths(self, job: Job, pending: PendingRecording) -> None:
+        """Take the paths the queued title rename produced (main thread)."""
+        job.audio_path = pending.audio_path
+        job.transcript_path = pending.transcript_path
+        job.notes_path = pending.notes_path
+        job.label = pending.label
+        self._job_manager.persist()
+        self._changed()
 
     def _launch_processor(self, job: Job) -> None:
         if job.cancelled:
             return
         self._set_job_status_text(job.job_id, "Transcribing…")
-        handle = self._launcher().launch(
-            str(job.audio_path),
-            str(job.transcript_path),
-            str(job.notes_path),
-            on_status=lambda msg, jid=job.job_id: self._set_job_status_text(jid, msg),
-            on_done=lambda paths, j=job: self._on_processing_done(j, paths),
-            on_error=lambda msg, j=job: self._on_processing_error(j, msg),
-        )
+        try:
+            handle = self._launcher().launch(
+                str(job.audio_path),
+                str(job.transcript_path),
+                str(job.notes_path),
+                on_status=lambda msg, jid=job.job_id: self._set_job_status_text(jid, msg),
+                on_done=lambda paths, j=job: self._on_processing_done(j, paths),
+                on_error=lambda msg, j=job: self._on_processing_error(j, msg),
+            )
+        except Exception as exc:
+            logger.exception("Could not start processing %s", job.label)
+            self._on_processing_error(job, f"Could not start processing: {exc}")
+            return
         self._processors[job.job_id] = handle
 
     def _launcher(self):
@@ -393,6 +450,23 @@ class Engine:
             if j.job_id == job_id:
                 return j
         return None
+
+    def _on_auto_notice(self, action: str, message: str) -> None:
+        """Handle the auto-stop ladder. Arrives on a recorder worker thread."""
+        idle_call(self._apply_auto_notice, action, message)
+
+    def _apply_auto_notice(self, action: str, message: str) -> None:
+        from ..core.auto_stop import STOP
+        from ..ui.notifications import notify
+
+        summary = "Recording stopped" if action == STOP else "Still recording"
+        notify(summary=summary, body=message)
+        logger.info("Auto-stop %s: %s", action, message)
+        if action == STOP:
+            # No countdown: its whole purpose is to give someone at the machine
+            # a chance to cancel, and an automatic stop happens because nobody
+            # is there.
+            self._controller.stop(False)
 
     def _notify_complete(self, job: Job) -> None:
         from ..ui.notifications import notify

@@ -106,5 +106,109 @@ def test_recitation_with_the_sdk_enum_raises_even_with_partial_text():
 
 def test_recitation_in_a_summary_names_the_transcript():
     response = _response("", out_tokens=0, finish_reason="RECITATION")
-    with pytest.raises(RuntimeError, match="blocked the summary. It flagged part of the transcript"):
+    with pytest.raises(
+        RuntimeError, match="blocked the summary. It flagged part of the transcript"
+    ):
         _require_text(response, "summarization")
+
+
+# --- the whole-file path ------------------------------------------------------
+
+
+class _Files:
+    def __init__(self, states):
+        self.states = list(states)
+        self.calls = []
+
+    def upload(self, *, file, config):
+        self.calls.append(("upload", file, config))
+        return SimpleNamespace(name="files/1", state=self.states.pop(0))
+
+    def get(self, *, name, config=None):
+        self.calls.append(("get", name, config))
+        return SimpleNamespace(name=name, state=self.states.pop(0))
+
+    def delete(self, *, name, config=None):
+        self.calls.append(("delete", name, config))
+
+
+class _Models:
+    def __init__(self, outcome):
+        self.outcome = outcome
+        self.calls = []
+
+    def generate_content(self, *, model, contents, config):
+        self.calls.append(config)
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+
+def _whole_file_provider(states, outcome):
+    from meeting_recorder.processing.providers.gemini import GeminiProvider
+
+    provider = GeminiProvider(api_key="k", model="m", timeout_minutes=5)
+    files, models = _Files(states), _Models(outcome)
+    provider._client = SimpleNamespace(files=files, models=models)
+    return provider, files, models
+
+
+def _states():
+    pytest.importorskip("google.genai")
+    from google.genai import types
+
+    return types.FileState
+
+
+def test_whole_file_upload_poll_and_delete_all_carry_a_timeout(monkeypatch, tmp_path):
+    state = _states()
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    provider, files, models = _whole_file_provider(
+        [state.PROCESSING, state.ACTIVE], _response("  the words  ")
+    )
+
+    text = provider.transcribe(tmp_path / "a.mp3")
+
+    assert text == "the words"
+    kinds = [call[0] for call in files.calls]
+    assert kinds == ["upload", "get", "delete"]
+    upload_config = files.calls[0][2]
+    assert upload_config["mime_type"] == "audio/mpeg"
+    assert upload_config["http_options"]["timeout"] == 5 * 60_000
+    assert files.calls[1][2]["http_options"]["timeout"] == 60_000
+    assert files.calls[2][2]["http_options"]["timeout"] == 60_000
+    assert models.calls[0]["http_options"]["timeout"] == 5 * 60_000
+
+
+def test_the_uploaded_file_is_deleted_when_transcription_fails(tmp_path):
+    state = _states()
+    provider, files, _ = _whole_file_provider([state.ACTIVE], _response("", out_tokens=0))
+
+    with pytest.raises(RuntimeError, match="returned no text"):
+        provider.transcribe(tmp_path / "a.mp3")
+
+    assert [call[0] for call in files.calls] == ["upload", "delete"]
+
+
+def test_a_blocked_transcript_keeps_the_clear_copyright_filter_message(tmp_path):
+    state = _states()
+    provider, files, _ = _whole_file_provider(
+        [state.ACTIVE], _response("", out_tokens=0, finish_reason="RECITATION")
+    )
+
+    with pytest.raises(RuntimeError, match="copyright filter blocked the transcription"):
+        provider.transcribe(tmp_path / "a.mp3")
+
+    assert files.calls[-1][0] == "delete"
+
+
+def test_a_failed_delete_does_not_fail_the_transcript(tmp_path):
+    state = _states()
+    provider, files, _ = _whole_file_provider([state.ACTIVE], _response("ok"))
+
+    def refuse(*, name, config=None):
+        raise OSError("offline")
+
+    files.delete = refuse
+
+    assert provider.transcribe(tmp_path / "a.mp3") == "ok"

@@ -10,13 +10,15 @@ import subprocess
 import threading
 from collections.abc import Callable, Sequence
 
+from ..config.defaults import APP_NAME
+
 logger = logging.getLogger(__name__)
 
 
 def notify(
     summary: str,
     body: str = "",
-    app_name: str = "Meeting Recorder",
+    app_name: str = APP_NAME,
     icon: str = "meeting-recorder",
 ) -> None:
     """Send a desktop notification using notify-send (libnotify)."""
@@ -47,7 +49,7 @@ def notify_with_actions(
     body: str,
     actions: Sequence[tuple[str, str]],
     on_done: Callable[[str], None],
-    app_name: str = "Meeting Recorder",
+    app_name: str = APP_NAME,
     icon: str = "meeting-recorder",
 ) -> None:
     """Show a silent notification with (name, label) buttons; call on_done(name) when it ends.
@@ -72,7 +74,9 @@ def notify_with_actions(
     def _wait() -> None:
         chosen = ""
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            )
             try:
                 out = (proc.communicate(timeout=PROMPT_TIMEOUT_MS / 1000 + 30)[0] or "").strip()
             except subprocess.TimeoutExpired:
@@ -82,8 +86,11 @@ def notify_with_actions(
                 on_done("")
                 return
             if proc.returncode != 0:
-                logger.warning("notify-send exited %s with actions; showing a plain notification", proc.returncode)
-                notify(summary, f"{body} Open Meeting Recorder to start recording.", app_name, icon)
+                logger.warning(
+                    "notify-send exited %s with actions; showing a plain notification",
+                    proc.returncode,
+                )
+                notify(summary, f"{body} Open {app_name} to start recording.", app_name, icon)
             elif out in {name for name, _ in actions}:
                 chosen = out
         except FileNotFoundError:

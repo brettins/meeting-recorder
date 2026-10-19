@@ -44,6 +44,9 @@ _TRANSCRIPTION_THINKING_BUDGET = 128
 _MAX_OUTPUT_TOKENS = 65_536
 
 
+# Bounds on the Files API calls, which otherwise wait forever on a dead connection.
+_FILE_CALL_TIMEOUT_MS = 60_000
+
 _BLOCKED = {"transcription": ("transcription", "audio"), "summarization": ("summary", "transcript")}
 
 
@@ -166,35 +169,53 @@ class GeminiProvider:
                 file=str(audio_path),
                 # mime_type must be specified explicitly; the SDK does not infer it from
                 # the file extension for audio files, and omitting it causes a 400 error.
-                config={"mime_type": "audio/mpeg"},
+                config={
+                    "mime_type": "audio/mpeg",
+                    "http_options": {"timeout": self._generate_timeout_ms},
+                },
             ),
             description="Gemini file upload",
         )
 
-        # After upload, Google's servers transcode and analyse the audio. The file
-        # state transitions PROCESSING → ACTIVE before it can be referenced in prompts.
-        uploaded = self._wait_for_active(client, uploaded, on_status)
-
-        if on_status:
-            on_status("Transcribing with Gemini…")
-
         try:
-            response = retry_on_transient(
-                lambda: client.models.generate_content(
-                    model=self._model,
-                    contents=[uploaded, self._transcription_prompt],
-                    config={
-                        "temperature": _TRANSCRIPTION_TEMPERATURE,
-                        "max_output_tokens": _MAX_OUTPUT_TOKENS,
-                        "thinking_config": {"thinking_budget": _TRANSCRIPTION_THINKING_BUDGET},
-                        "http_options": {"timeout": self._generate_timeout_ms},
-                    },
-                ),
-                description="Gemini transcription",
+            # After upload, Google's servers transcode and analyse the audio. The file
+            # state transitions PROCESSING → ACTIVE before it can be referenced in prompts.
+            uploaded = self._wait_for_active(client, uploaded, on_status)
+
+            if on_status:
+                on_status("Transcribing with Gemini…")
+
+            try:
+                response = retry_on_transient(
+                    lambda: client.models.generate_content(
+                        model=self._model,
+                        contents=[uploaded, self._transcription_prompt],
+                        config={
+                            "temperature": _TRANSCRIPTION_TEMPERATURE,
+                            "max_output_tokens": _MAX_OUTPUT_TOKENS,
+                            "thinking_config": {"thinking_budget": _TRANSCRIPTION_THINKING_BUDGET},
+                            "http_options": {"timeout": self._generate_timeout_ms},
+                        },
+                    ),
+                    description="Gemini transcription",
+                )
+            except Exception as exc:
+                raise _wrap_timeout(exc, "transcription", self._generate_timeout_ms) from exc
+            return _require_text(response, "transcription")
+        finally:
+            self._delete_remote(client, uploaded)
+
+    def _delete_remote(self, client: Any, file_obj: Any) -> None:
+        """Remove an uploaded file from the Files API; failure only costs storage."""
+        name = getattr(file_obj, "name", None)
+        if not name:
+            return
+        try:
+            client.files.delete(
+                name=name, config={"http_options": {"timeout": _FILE_CALL_TIMEOUT_MS}}
             )
         except Exception as exc:
-            raise _wrap_timeout(exc, "transcription", self._generate_timeout_ms) from exc
-        return _require_text(response, "transcription")
+            logger.debug("Could not delete %s from Gemini: %s", name, exc)
 
     # ------------------------------------------------------------------
     # Summarization
@@ -259,4 +280,7 @@ class GeminiProvider:
                 on_status(f"Waiting for Gemini to process audio… ({state_label})")
 
             time.sleep(_POLL_INTERVAL)
-            file_obj = client.files.get(name=file_obj.name)
+            file_obj = client.files.get(
+                name=file_obj.name,
+                config={"http_options": {"timeout": _FILE_CALL_TIMEOUT_MS}},
+            )
