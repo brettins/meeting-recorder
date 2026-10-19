@@ -82,6 +82,7 @@ class TestAnalyse:
         result = analyse(audio, lambda _c: _result(stderr=FFMPEG_OUTPUT))
         assert result.duration == 3 * HOUR
         assert len(result.runs) == 1
+        assert len(result.seams) == 1
         assert result.would_split is True
 
     def test_a_file_ffmpeg_cannot_measure_is_reported(self, tmp_path):
@@ -106,7 +107,7 @@ class TestAnalyse:
     def test_the_summary_describes_the_split(self, tmp_path):
         audio = _meeting(tmp_path) / "recording.mp3"
         result = analyse(audio, lambda _c: _result(stderr=FFMPEG_OUTPUT))
-        assert "Splitting into 2 meetings" in result.summary()
+        assert "Suggested split into 2 meetings" in result.summary()
 
     def test_the_summary_reports_an_error_instead(self, tmp_path):
         assert "missing from disk" in analyse(tmp_path / "absent.mp3").summary()

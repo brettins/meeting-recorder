@@ -31,7 +31,7 @@ from .silence_map import build_probe_command, build_trim_command
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MIN_SAVING_SECONDS = 5 * 60
+DEFAULT_MIN_SAVING_SECONDS = 60
 
 StatusFn = Callable[[str], None]
 

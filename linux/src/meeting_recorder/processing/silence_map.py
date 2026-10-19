@@ -7,11 +7,9 @@ almost any recording carries long quiet passages that cost upload time and
 model budget for nothing, and wants **trimming** before it is sent. Both start
 from the same pass of ffmpeg's ``silencedetect`` over the file.
 
-The split is deliberately conservative. A gap has to be long enough that it
-cannot be a pause in a conversation — half an hour by default — because
-splitting a meeting that merely went quiet would scatter one discussion across
-two sets of notes, which is worse than leaving a long recording alone. Trimming
-is the opposite: it never changes what was said, only how much dead air travels
+A split is only ever suggested, so the gap that proposes one can be modest:
+ten minutes, with short interruptions such as a chat notification not counting
+as sound. Trimming never changes what was said, only how much dead air travels
 with it, so it applies to everything.
 
 Everything here is pure except the two command builders' callers: analysis
@@ -29,10 +27,13 @@ from ..core.auto_stop import format_duration
 
 # Quiet enough to be nobody talking, for long enough to be worth noticing.
 ANALYSIS_THRESHOLD_DB = -45
-ANALYSIS_MIN_SILENCE_SECONDS = 20
+ANALYSIS_MIN_SILENCE_SECONDS = 10
 
-# A gap this long is a seam between two meetings rather than a pause in one.
-DEFAULT_SPLIT_GAP_SECONDS = 30 * 60
+# A gap this long is suggested as a seam between two meetings.
+DEFAULT_SPLIT_GAP_SECONDS = 10 * 60
+
+# Sound shorter than this inside a quiet stretch (a chat ping) does not end it.
+BLIP_MERGE_SECONDS = 5.0
 
 # Keep a little audio either side of a seam so a word at the edge is not clipped.
 SPLIT_PAD_SECONDS = 2.0
@@ -40,10 +41,10 @@ SPLIT_PAD_SECONDS = 2.0
 # A fragment shorter than this is a stray noise, not a meeting.
 MIN_PART_SECONDS = 60.0
 
-# Trimming leaves this much of each silence in place, so speech does not butt
-# together and the transcript keeps some sense of pacing.
+# Trimming shortens any silence of at least TRIM_MIN_SILENCE_SECONDS to
+# TRIM_KEEP_SECONDS, so speech does not butt together.
 TRIM_KEEP_SECONDS = 1.0
-TRIM_MIN_SILENCE_SECONDS = 3.0
+TRIM_MIN_SILENCE_SECONDS = 10.0
 
 _START = re.compile(r"silence_start:\s*(-?[\d.]+)")
 _END = re.compile(r"silence_end:\s*(-?[\d.]+)")
@@ -130,25 +131,40 @@ def total_silence(runs: list[SilenceRun]) -> float:
     return sum(run.duration for run in runs)
 
 
-def split_parts(
-    runs: list[SilenceRun],
-    total_duration: float,
-    gap_seconds: float = DEFAULT_SPLIT_GAP_SECONDS,
-) -> list[Part]:
-    """The spans a recording should be cut into, or one span if it should not.
+def merge_runs(
+    runs: list[SilenceRun], blip_seconds: float = BLIP_MERGE_SECONDS
+) -> list[SilenceRun]:
+    """Join quiet runs separated by sound no longer than *blip_seconds*."""
+    merged: list[SilenceRun] = []
+    for run in sorted(runs, key=lambda r: r.start):
+        if merged and run.start - merged[-1].end <= blip_seconds:
+            merged[-1] = SilenceRun(merged[-1].start, max(merged[-1].end, run.end))
+        else:
+            merged.append(run)
+    return merged
 
-    Returns a single part covering the whole file when nothing is long enough
-    to be a seam, so a caller can treat "no split" and "split" the same way.
+
+def find_seams(
+    runs: list[SilenceRun], gap_seconds: float = DEFAULT_SPLIT_GAP_SECONDS
+) -> list[SilenceRun]:
+    """The quiet stretches long enough to suggest a split."""
+    return [run for run in merge_runs(runs) if run.duration >= gap_seconds]
+
+
+def parts_from_seams(seams: list[SilenceRun], total_duration: float) -> list[Part]:
+    """The spans left once a recording is cut at each of *seams*.
+
+    Returns a single part covering the whole file when *seams* is empty, so a
+    caller can treat "no split" and "split" the same way.
     """
     if total_duration <= 0:
         return []
-    seams = [run for run in runs if run.duration >= gap_seconds]
     if not seams:
         return [Part(0.0, total_duration)]
 
     parts: list[Part] = []
     cursor = 0.0
-    for seam in seams:
+    for seam in sorted(seams, key=lambda r: r.start):
         end = min(seam.start + SPLIT_PAD_SECONDS, total_duration)
         if end - cursor >= MIN_PART_SECONDS:
             parts.append(Part(cursor, end))
@@ -156,6 +172,15 @@ def split_parts(
     if total_duration - cursor >= MIN_PART_SECONDS:
         parts.append(Part(cursor, total_duration))
     return parts or [Part(0.0, total_duration)]
+
+
+def split_parts(
+    runs: list[SilenceRun],
+    total_duration: float,
+    gap_seconds: float = DEFAULT_SPLIT_GAP_SECONDS,
+) -> list[Part]:
+    """The spans a recording should be cut into, or one span if it should not."""
+    return parts_from_seams(find_seams(runs, gap_seconds), total_duration)
 
 
 def describe_plan(
@@ -187,7 +212,7 @@ def describe_plan(
     return (
         f"{format_duration(int(total_duration))} long, with "
         f"{len(parts) - 1} gap{'s' if len(parts) != 2 else ''} over "
-        f"{format_duration(int(gap_seconds))}. Splitting into {len(parts)} meetings "
+        f"{format_duration(int(gap_seconds))}. Suggested split into {len(parts)} meetings "
         f"of {lengths}. About {kept} would be sent for transcription."
     )
 
@@ -235,12 +260,13 @@ def build_trim_command(source: Path | str, destination: Path | str) -> list[str]
     """Strip long silences out of a copy that is about to be uploaded.
 
     ``stop_periods=-1`` applies the rule to every silence in the file rather
-    than only the leading one, and ``stop_duration`` leaves a beat in place so
-    the speech does not run together.
+    than only the leading one; only silences of ``stop_duration`` or longer are
+    cut, and ``stop_silence`` leaves a beat in place.
     """
     trim = (
         f"silenceremove=stop_periods=-1"
-        f":stop_duration={TRIM_KEEP_SECONDS}"
+        f":stop_duration={TRIM_MIN_SILENCE_SECONDS}"
+        f":stop_silence={TRIM_KEEP_SECONDS}"
         f":stop_threshold={ANALYSIS_THRESHOLD_DB}dB"
         f":detection=rms"
     )

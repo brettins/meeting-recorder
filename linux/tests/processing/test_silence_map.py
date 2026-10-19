@@ -11,6 +11,8 @@ from meeting_recorder.processing.silence_map import (
     build_extract_command,
     build_trim_command,
     describe_plan,
+    find_seams,
+    merge_runs,
     parse_duration,
     parse_silence_runs,
     split_parts,
@@ -165,7 +167,7 @@ class TestDescribePlan:
         parts = [Part(0.0, HOUR), Part(2 * HOUR, 3 * HOUR)]
         runs = [SilenceRun(HOUR, 2 * HOUR)]
         text = describe_plan(parts, runs, 3 * HOUR)
-        assert "Splitting into 2 meetings" in text
+        assert "Suggested split into 2 meetings" in text
         assert "1 hour, 1 hour" in text
 
     def test_one_gap_is_singular(self):
@@ -204,13 +206,33 @@ class TestCommands:
         assert "stop_periods=-1" in filt
         assert "stop_threshold=-45dB" in filt
 
-    def test_trimming_leaves_a_beat_of_silence_in_place(self):
-        filt = build_trim_command("/m/in.mp3", "/m/out.mp3")[
-            build_trim_command("/m/in.mp3", "/m/out.mp3").index("-af") + 1
-        ]
-        assert "stop_duration=1.0" in filt
+    def test_trimming_cuts_silences_of_ten_seconds_or_more_and_keeps_a_beat(self):
+        cmd = build_trim_command("/m/in.mp3", "/m/out.mp3")
+        filt = cmd[cmd.index("-af") + 1]
+        assert "stop_duration=10.0" in filt
+        assert "stop_silence=1.0" in filt
 
     def test_trimming_writes_an_mp3(self):
         cmd = build_trim_command("/m/in.mp3", "/m/out.mp3")
         assert cmd[cmd.index("-c:a") + 1] == "libmp3lame"
         assert cmd[-1] == "/m/out.mp3"
+
+
+class TestSeams:
+    def test_a_chat_ping_does_not_break_a_quiet_stretch(self):
+        runs = [SilenceRun(0.0, 400.0), SilenceRun(401.0, 900.0)]
+        assert merge_runs(runs) == [SilenceRun(0.0, 900.0)]
+
+    def test_real_sound_keeps_runs_apart(self):
+        runs = [SilenceRun(0.0, 400.0), SilenceRun(430.0, 900.0)]
+        assert merge_runs(runs) == runs
+
+    def test_blips_let_two_short_runs_reach_the_threshold(self):
+        runs = [
+            SilenceRun(HOUR, HOUR + 9 * MINUTE),
+            SilenceRun(HOUR + 9 * MINUTE + 1, HOUR + 12 * MINUTE),
+        ]
+        assert find_seams(runs) == [SilenceRun(HOUR, HOUR + 12 * MINUTE)]
+
+    def test_the_default_gap_is_ten_minutes(self):
+        assert DEFAULT_SPLIT_GAP_SECONDS == 10 * MINUTE

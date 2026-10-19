@@ -94,8 +94,8 @@ them. The scissors icon on any meeting with audio reads the recording, reports w
 how many meetings, how long each one is, how much audio would actually be transcribed — and
 lets you split it into separate meetings or keep it as one and process it as is.
 
-A gap has to be at least 30 minutes to count as a seam, so a meeting that merely went quiet is
-never broken up. The original recording is always kept.
+A quiet stretch of at least 10 minutes is suggested as a split point. Each suggestion can be
+turned off, and nothing is cut until you confirm. The original recording is always kept.
 
 ### Filing meetings into Notion
 

@@ -34,9 +34,10 @@ from ..processing.silence_map import (
     build_analyse_command,
     build_extract_command,
     describe_plan,
+    find_seams,
     parse_duration,
     parse_silence_runs,
-    split_parts,
+    parts_from_seams,
 )
 from ..utils.filename import sanitize_title
 
@@ -54,6 +55,7 @@ class Analysis:
 
     duration: float = 0.0
     runs: list[SilenceRun] = field(default_factory=list)
+    seams: list[SilenceRun] = field(default_factory=list)
     parts: list[Part] = field(default_factory=list)
     error: str = ""
 
@@ -124,7 +126,13 @@ def analyse(
     if duration <= 0:
         return Analysis(error="Could not work out how long that recording is.")
     runs = parse_silence_runs(text, duration)
-    return Analysis(duration=duration, runs=runs, parts=split_parts(runs, duration, gap_seconds))
+    seams = find_seams(runs, gap_seconds)
+    return Analysis(
+        duration=duration,
+        runs=runs,
+        seams=seams,
+        parts=parts_from_seams(seams, duration),
+    )
 
 
 def split_recording(

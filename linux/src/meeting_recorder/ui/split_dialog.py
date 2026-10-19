@@ -28,6 +28,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gtk
 
 from ..core.auto_stop import format_duration
+from ..processing.silence_map import parts_from_seams
 from ..services.recording_splitter import Analysis, analyse, split_recording
 from ..utils.glib_bridge import idle_call
 
@@ -54,6 +55,7 @@ class SplitDialog(Adw.Window):
         self._on_split = on_split
         self._on_keep = on_keep
         self._analysis: Analysis | None = None
+        self._seam_switches: list[Adw.SwitchRow] = []
         self._busy = False
 
         self._build()
@@ -92,7 +94,10 @@ class SplitDialog(Adw.Window):
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_vexpand(True)
-        self._parts = Adw.PreferencesGroup(title="Parts")
+        self._parts = Adw.PreferencesGroup(
+            title="Suggested split points",
+            description="Turn off any you want to keep inside one meeting.",
+        )
         scroll.set_child(self._parts)
         box.append(scroll)
 
@@ -130,20 +135,37 @@ class SplitDialog(Adw.Window):
         if analysis.error:
             return
         self._keep_btn.set_sensitive(True)
-        for index, part in enumerate(analysis.parts, start=1):
-            row = Adw.ActionRow(
-                title=f"Part {index}",
+        for seam in analysis.seams:
+            row = Adw.SwitchRow(
+                title=f"Cut at {_clock(seam.start)}",
                 subtitle=(
-                    f"{_clock(part.start)} – {_clock(part.end)}  ·  "
-                    f"{format_duration(int(part.duration))}"
+                    f"{format_duration(int(seam.duration))} of quiet, until {_clock(seam.end)}"
                 ),
             )
+            row.set_active(True)
+            row.connect("notify::active", lambda *_: self._refresh_split_button())
+            self._seam_switches.append(row)
             self._parts.add(row)
-        if analysis.would_split:
-            self._split_btn.set_label(f"Split into {len(analysis.parts)} meetings")
+        self._refresh_split_button()
+
+    def _chosen_parts(self):
+        if self._analysis is None:
+            return []
+        seams = [
+            seam
+            for seam, row in zip(self._analysis.seams, self._seam_switches, strict=True)
+            if row.get_active()
+        ]
+        return parts_from_seams(seams, self._analysis.duration)
+
+    def _refresh_split_button(self) -> None:
+        parts = self._chosen_parts()
+        if len(parts) > 1:
+            self._split_btn.set_label(f"Split into {len(parts)} meetings")
             self._split_btn.set_sensitive(True)
         else:
             self._split_btn.set_label("Nothing to split")
+            self._split_btn.set_sensitive(False)
 
     # ------------------------------------------------------------------
 
@@ -160,7 +182,7 @@ class SplitDialog(Adw.Window):
         self._split_btn.set_sensitive(False)
         self._keep_btn.set_sensitive(False)
         self._status.set_text("Splitting… the original is kept.")
-        parts = list(self._analysis.parts)
+        parts = self._chosen_parts()
         output_folder = self._output_folder
 
         def _bg() -> None:
