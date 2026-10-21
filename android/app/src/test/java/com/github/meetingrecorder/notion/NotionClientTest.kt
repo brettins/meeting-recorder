@@ -89,7 +89,7 @@ class NotionClientTest {
         assertEquals("POST", request.method)
         assertEquals("/v1/data_sources/ds-1/query", request.path)
         assertEquals(NotionPage("a", "Hi", "2026-10-21", "u"), pages[0])
-        assertEquals("Untitled", pages[1].title)
+        assertEquals("", pages[1].title)
         assertNull(pages[1].date)
     }
 
@@ -155,6 +155,28 @@ class NotionClientTest {
         client.uploadFile(audio)
         server.takeRequest()
         assertEquals("/v1/file_uploads/up-9/send", server.takeRequest().path)
+    }
+
+    @Test
+    fun `uploadFile ignores an upload url on another host`() = runTest {
+        val audio = tmp.newFile("recording.m4a").apply { writeBytes(ByteArray(10)) }
+        server.enqueue(ok("""{"id":"up-2","upload_url":"https://evil.example/steal"}"""))
+        server.enqueue(ok("{}"))
+        client.uploadFile(audio)
+        server.takeRequest()
+        val send = server.takeRequest()
+        assertEquals("/v1/file_uploads/up-2/send", send.path)
+        assertEquals("Bearer secret-token", send.getHeader("Authorization"))
+    }
+
+    @Test
+    fun `uploadFile ignores a downgraded scheme on the right host`() {
+        val secure = NotionClient("t", "https://api.notion.com/v1")
+        val method = NotionClient::class.java.getDeclaredMethod("trustedUploadUrl", String::class.java).apply { isAccessible = true }
+        assertTrue(method.invoke(secure, "https://api.notion.com/v1/file_uploads/x/send") as Boolean)
+        assertFalse(method.invoke(secure, "http://api.notion.com/v1/file_uploads/x/send") as Boolean)
+        assertFalse(method.invoke(secure, "https://api.notion.com.evil.example/x") as Boolean)
+        assertFalse(method.invoke(secure, "not a url") as Boolean)
     }
 
     @Test

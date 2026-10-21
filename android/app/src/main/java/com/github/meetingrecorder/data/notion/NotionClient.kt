@@ -1,8 +1,7 @@
 package com.github.meetingrecorder.data.notion
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -12,6 +11,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -19,9 +21,12 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 const val NOTION_API_ROOT = "https://api.notion.com/v1"
 const val NOTION_VERSION = "2025-09-03"
@@ -45,6 +50,8 @@ class NotionError(
         FILE_TOO_LARGE,
         NO_UPLOAD_TARGET,
         NO_TOKEN,
+        TOKEN_STORE,
+        UNEXPECTED,
     }
 }
 
@@ -78,7 +85,7 @@ object NotionApi {
 
     fun parsePageSummary(page: JsonObject): NotionPage = NotionPage(
         id = page["id"]?.jsonPrimitive?.contentOrNull ?: "",
-        title = pageTitle(page).ifEmpty { "Untitled" },
+        title = pageTitle(page),
         date = pageDate(page),
         url = page["url"]?.jsonPrimitive?.contentOrNull ?: "",
     )
@@ -251,8 +258,9 @@ class NotionClient(
         if (uploadId.isEmpty()) {
             throw NotionError(NotionError.Kind.NO_UPLOAD_TARGET, "Notion did not return an upload target for the recording.")
         }
+        val derivedUrl = "$baseUrl/file_uploads/$uploadId/send"
         val uploadUrl = created["upload_url"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            .ifEmpty { "$baseUrl/file_uploads/$uploadId/send" }
+            .takeIf { trustedUploadUrl(it) } ?: derivedUrl
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", file.name.replace("\"", ""), file.asRequestBody(contentType.toMediaType()))
@@ -289,6 +297,12 @@ class NotionClient(
         request("PATCH", "/pages/$pageId", payload)
     }
 
+    private fun trustedUploadUrl(candidate: String): Boolean {
+        val url = candidate.toHttpUrlOrNull() ?: return false
+        val base = baseUrl.toHttpUrlOrNull() ?: return false
+        return url.host == base.host && (url.scheme == "https" || url.scheme == base.scheme)
+    }
+
     private suspend fun request(method: String, path: String, payload: JsonElement? = null): JsonObject {
         val body = payload?.let { it.toString().toRequestBody("application/json".toMediaType()) }
         val raw = send("$baseUrl$path", method, body)
@@ -305,7 +319,7 @@ class NotionClient(
         var attempt = 0
         while (true) {
             try {
-                return withContext(Dispatchers.IO) { execute(url, method, body) }
+                return execute(url, method, body)
             } catch (e: NotionError) {
                 val status = e.statusCode
                 val transient = status != null && (status == 429 || status in 500..599)
@@ -316,21 +330,41 @@ class NotionClient(
         }
     }
 
-    private fun execute(url: String, method: String, body: RequestBody?): String {
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $token")
-            .header("Notion-Version", NOTION_VERSION)
-            .method(method, body ?: if (method == "GET") null else ByteArray(0).toRequestBody(null))
-            .build()
-        try {
-            http.newCall(request).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw NotionApi.mapError(response.code, text)
-                return text
-            }
-        } catch (e: IOException) {
-            throw NotionError(NotionError.Kind.NETWORK, "Could not reach Notion: ${e.message}", arg = e.message.orEmpty())
+    private suspend fun execute(url: String, method: String, body: RequestBody?): String =
+        suspendCancellableCoroutine { continuation ->
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $token")
+                .header("Notion-Version", NOTION_VERSION)
+                .method(method, body ?: if (method == "GET") null else ByteArray(0).toRequestBody(null))
+                .build()
+            val call = http.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(
+                object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        continuation.resumeWithException(
+                            NotionError(NotionError.Kind.NETWORK, "Could not reach Notion: ${e.message}", arg = e.message.orEmpty()),
+                        )
+                    }
+
+                    override fun onResponse(call: Call, response: Response) {
+                        response.use {
+                            try {
+                                val text = it.body?.string().orEmpty()
+                                if (it.isSuccessful) {
+                                    continuation.resume(text)
+                                } else {
+                                    continuation.resumeWithException(NotionApi.mapError(it.code, text))
+                                }
+                            } catch (e: IOException) {
+                                continuation.resumeWithException(
+                                    NotionError(NotionError.Kind.NETWORK, "Could not reach Notion: ${e.message}", arg = e.message.orEmpty()),
+                                )
+                            }
+                        }
+                    }
+                },
+            )
         }
-    }
 }

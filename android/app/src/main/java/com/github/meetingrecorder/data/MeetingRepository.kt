@@ -5,9 +5,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Logger
 
 class MeetingRepository(private val rootDir: File) : MeetingStore {
+
+    private val logger = Logger.getLogger("MeetingRepository")
 
     // Captured when the repository (a per-process singleton) is constructed — effectively app launch.
     // recoverOrphanedRecordings() only acts on directories locked *before* this moment, so a recording
@@ -130,34 +138,54 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
     }
 
     override fun saveMeetingMeta(dir: File, title: String?, durationSeconds: Int?) {
-        val metaFile = File(dir, "meeting.json")
-        val merged = readMetaTree(metaFile).toMutableMap()
-        if (title != null) merged["title"] = JsonPrimitive(title) else merged.remove("title")
-        if (durationSeconds != null) merged["duration_seconds"] = JsonPrimitive(durationSeconds) else merged.remove("duration_seconds")
-        writeMetaAtomically(metaFile, JsonObject(merged).toString())
+        updateMeta(dir, throwIfUnreadable = false) { meta ->
+            val merged = meta.toMutableMap()
+            if (title != null) merged["title"] = JsonPrimitive(title) else merged.remove("title")
+            if (durationSeconds != null) merged["duration_seconds"] = JsonPrimitive(durationSeconds) else merged.remove("duration_seconds")
+            JsonObject(merged)
+        }
     }
 
-    /** Records that a meeting was filed to a Notion page in meeting.json, keeping every other key. */
+    /** Records that a meeting was filed to a Notion page in meeting.json; throws when the file exists but cannot be read. */
     fun recordNotionFiling(dir: File, filing: NotionFilingMarker) {
+        updateMeta(dir, throwIfUnreadable = true) { NotionFilingMarker.apply(it, filing) }
+    }
+
+    private val metaLocks = ConcurrentHashMap<String, Any>()
+
+    private fun updateMeta(dir: File, throwIfUnreadable: Boolean, transform: (Map<String, JsonElement>) -> JsonObject) {
         val metaFile = File(dir, "meeting.json")
-        writeMetaAtomically(metaFile, NotionFilingMarker.apply(readMetaTree(metaFile), filing).toString())
+        synchronized(metaLocks.getOrPut(dir.absolutePath) { Any() }) {
+            val current = readMetaTree(metaFile)
+            if (current == null) {
+                logger.warning("meeting.json in ${dir.name} is unreadable; leaving it untouched")
+                if (throwIfUnreadable) throw IOException("meeting.json in ${dir.name} is unreadable")
+                return
+            }
+            writeMetaAtomically(metaFile, transform(current).toString())
+        }
     }
 
     private fun writeMetaAtomically(metaFile: File, text: String) {
-        val temp = File(metaFile.parentFile, "meeting.json.tmp")
-        temp.writeText(text)
-        if (!temp.renameTo(metaFile)) {
-            metaFile.writeText(text)
+        val temp = File.createTempFile("meeting", ".tmp", metaFile.parentFile)
+        try {
+            FileOutputStream(temp).use {
+                it.write(text.toByteArray())
+                it.fd.sync()
+            }
+            Files.move(temp.toPath(), metaFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
             temp.delete()
         }
     }
 
-    private fun readMetaTree(metaFile: File): Map<String, JsonElement> {
+    /** Parsed meeting.json (empty when absent), or null when it exists but is not a JSON object. */
+    private fun readMetaTree(metaFile: File): Map<String, JsonElement>? {
         if (!metaFile.exists()) return emptyMap()
         return try {
-            lenientJson.parseToJsonElement(metaFile.readText()).jsonObject
+            lenientJson.parseToJsonElement(metaFile.readText()) as? JsonObject
         } catch (_: Exception) {
-            emptyMap()
+            null
         }
     }
 

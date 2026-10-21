@@ -343,6 +343,10 @@ jobs:
         working-directory: android
         run: ./gradlew test --no-daemon
 
+      - name: R8 shrink check (release, no signing)
+        working-directory: android
+        run: ./gradlew minifyReleaseWithR8 --no-daemon
+
       - name: Coverage report (Jacoco, report-only)
         working-directory: android
         run: ./gradlew jacocoDebugUnitTestReport --no-daemon

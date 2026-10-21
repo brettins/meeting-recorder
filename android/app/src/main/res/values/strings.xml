@@ -87,7 +87,6 @@
     <!-- Notion filing -->
     <string name="action_close">Close</string>
     <string name="action_retry">Retry</string>
-    <string name="action_add">Add</string>
     <string name="action_edit">Edit</string>
     <string name="action_delete">Delete</string>
     <string name="action_file_into_notion">File into Notion</string>
@@ -124,6 +123,11 @@
     <string name="notion_err_http">Notion returned an error (HTTP %1$d).</string>
     <string name="notion_err_file_too_large">The recording is %1$s MiB. Notion accepts 20 MiB per file. The notes can still be filed without the recording.</string>
     <string name="notion_err_no_upload_target">Notion did not return an upload target for the recording.</string>
+    <string name="notion_err_token_store">Couldn\'t read the stored Notion token. Enter it again in Settings → Notion.</string>
+    <string name="notion_err_unexpected">Something went wrong: %1$s</string>
+    <string name="notion_err_token_save">Couldn\'t save the token to secure storage. Try again.</string>
+    <string name="notion_untitled">Untitled</string>
+    <string name="notion_warn_marker_failed">The meeting file could not be updated, so this filing is not recorded on the meeting.</string>
     <string name="notion_err_no_token">No integration token is stored for %1$s. Add it in Settings → Notion.</string>
 
     <!-- Notion settings -->

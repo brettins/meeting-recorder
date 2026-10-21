@@ -256,6 +256,7 @@ class MeetingRepositoryTest {
 
     private fun marker(pageId: String = "page-1", notes: Boolean = true) = NotionFilingMarker(
         workspace = "Work",
+        workspaceId = "work",
         pageId = pageId,
         pageUrl = "https://notion.so/$pageId",
         filedAt = "2026-10-21T10:00:00Z",
@@ -316,6 +317,33 @@ class MeetingRepositoryTest {
         assertEquals("b", list.getJSONObject(0).getString("page_id"))
         assertEquals("a", list.getJSONObject(1).getString("page_id"))
         assertTrue(list.getJSONObject(1).getBoolean("notes"))
+    }
+
+    @Test
+    fun `recordNotionFiling refuses to touch an unreadable meeting_json`() {
+        val dir = tempDir.newFolder("broken")
+        File(dir, "meeting.json").writeText("{not json")
+        try {
+            repo().recordNotionFiling(dir, marker())
+            org.junit.Assert.fail("expected IOException")
+        } catch (_: java.io.IOException) {
+        }
+        assertEquals("{not json", File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `saveMeetingMeta leaves an unreadable meeting_json untouched`() {
+        val dir = tempDir.newFolder("broken2")
+        File(dir, "meeting.json").writeText("[1,2]")
+        repo().saveMeetingMeta(dir, "T", 1)
+        assertEquals("[1,2]", File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `no temp files are left behind after a write`() {
+        val dir = tempDir.newFolder("tidy")
+        repo().recordNotionFiling(dir, marker())
+        assertEquals(listOf("meeting.json"), dir.list()!!.toList())
     }
 
     @Test

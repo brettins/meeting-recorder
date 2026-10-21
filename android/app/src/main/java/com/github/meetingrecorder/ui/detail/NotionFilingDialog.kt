@@ -68,13 +68,17 @@ fun NotionFilingDialog(
         if (selectedPageId == null) selectedPageId = suggestion?.id
     }
 
+    val dismiss = {
+        viewModel.close()
+        onDismiss()
+    }
     val working = ui.filing is FilingState.Working
     val done = ui.filing is FilingState.Done
     val canFile = loaded != null && !working && !done &&
         (if (creating) newTitle.isNotBlank() else selectedPageId != null)
 
     AlertDialog(
-        onDismissRequest = { if (!working) onDismiss() },
+        onDismissRequest = { if (!working) dismiss() },
         title = { Text(stringResource(R.string.action_file_into_notion)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -154,7 +158,7 @@ fun NotionFilingDialog(
                                     ) {
                                         RadioButton(selected = selectedPageId == page.id, onClick = null, modifier = Modifier.padding(8.dp))
                                         Column(Modifier.weight(1f)) {
-                                            Text(page.title, style = MaterialTheme.typography.bodyMedium)
+                                            Text(page.title.ifEmpty { stringResource(R.string.notion_untitled) }, style = MaterialTheme.typography.bodyMedium)
                                             val subtitle = page.date ?: stringResource(R.string.notion_no_date)
                                             val label = if (page.id == suggestion?.id) {
                                                 "$subtitle · ${stringResource(R.string.notion_same_day)}"
@@ -185,13 +189,13 @@ fun NotionFilingDialog(
                         Text(stringResource(progressText(filing.progress)))
                     }
                     is FilingState.Failed -> ErrorLine(notionErrorText(filing.error))
-                    is FilingState.Done -> Text(filedSummary(filing.result))
+                    is FilingState.Done -> Text(filedSummary(filing.result, filing.markerSaved))
                 }
             }
         },
         confirmButton = {
             if (done) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
+                TextButton(onClick = dismiss) { Text(stringResource(R.string.action_close)) }
             } else {
                 TextButton(
                     enabled = canFile,
@@ -206,7 +210,7 @@ fun NotionFilingDialog(
         },
         dismissButton = {
             if (!done) {
-                TextButton(enabled = !working, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+                TextButton(enabled = !working, onClick = dismiss) { Text(stringResource(R.string.action_cancel)) }
             }
         },
     )
@@ -224,21 +228,22 @@ private fun progressText(progress: NotionFiling.Progress): Int = when (progress)
 }
 
 @Composable
-private fun filedSummary(result: FilingResult): String {
+private fun filedSummary(result: FilingResult, markerSaved: Boolean): String {
+    val title = result.page.title.ifEmpty { stringResource(R.string.notion_untitled) }
     val parts = buildList {
         if (result.notesWritten) add(stringResource(R.string.notion_part_notes))
         if (result.transcriptWritten) add(stringResource(R.string.notion_part_transcript))
         if (result.audioAttached) add(stringResource(R.string.notion_part_recording))
     }
     val summary = when {
-        parts.isEmpty() -> stringResource(R.string.notion_filed_nothing, result.page.title)
+        parts.isEmpty() -> stringResource(R.string.notion_filed_nothing, title)
         else -> {
             val listed = if (parts.size == 1) {
                 parts.single()
             } else {
                 stringResource(R.string.notion_list_and, parts.dropLast(1).joinToString(", "), parts.last())
             }
-            stringResource(R.string.notion_filed_summary, listed, result.page.title)
+            stringResource(R.string.notion_filed_summary, listed, title)
         }
     }
     val warnings = result.warnings.map {
@@ -248,7 +253,8 @@ private fun filedSummary(result: FilingResult): String {
             is FilingWarning.AudioFailed -> stringResource(R.string.notion_warn_audio_failed, notionErrorText(it.error))
         }
     }
-    return (listOf(summary) + warnings).joinToString(" ")
+    val markerWarning = if (markerSaved) emptyList() else listOf(stringResource(R.string.notion_warn_marker_failed))
+    return (listOf(summary) + warnings + markerWarning).joinToString(" ")
 }
 
 @Composable
@@ -260,6 +266,8 @@ fun notionErrorText(error: NotionError): String = when (error.kind) {
     NotionError.Kind.NETWORK -> stringResource(R.string.notion_err_network, error.arg)
     NotionError.Kind.FILE_TOO_LARGE -> stringResource(R.string.notion_err_file_too_large, error.arg)
     NotionError.Kind.NO_UPLOAD_TARGET -> stringResource(R.string.notion_err_no_upload_target)
+    NotionError.Kind.TOKEN_STORE -> stringResource(R.string.notion_err_token_store)
+    NotionError.Kind.UNEXPECTED -> stringResource(R.string.notion_err_unexpected, error.arg)
     NotionError.Kind.NO_TOKEN -> stringResource(R.string.notion_err_no_token, error.arg)
     NotionError.Kind.HTTP -> error.arg.ifEmpty { stringResource(R.string.notion_err_http, error.statusCode ?: 0) }
 }

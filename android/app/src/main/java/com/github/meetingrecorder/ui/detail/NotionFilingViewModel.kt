@@ -39,7 +39,7 @@ sealed interface PagesState {
 sealed interface FilingState {
     data object Idle : FilingState
     data class Working(val progress: NotionFiling.Progress) : FilingState
-    data class Done(val result: FilingResult) : FilingState
+    data class Done(val result: FilingResult, val markerSaved: Boolean = true) : FilingState
     data class Failed(val error: NotionError) : FilingState
 }
 
@@ -73,6 +73,8 @@ class NotionFilingViewModel(
         if (openedPath == meetingPath) return
         openedPath = meetingPath
         createdPage = null
+        loadJob?.cancel()
+        _ui.value = NotionFilingUi()
         val dir = File(meetingPath)
         meetingDir = dir
         val workspaces = config.notionWorkspaces
@@ -97,6 +99,14 @@ class NotionFilingViewModel(
             )
             loadPages()
         }
+    }
+
+    /** Drops all dialog state so the next open starts from the current config. */
+    fun close() {
+        loadJob?.cancel()
+        openedPath = null
+        createdPage = null
+        _ui.value = NotionFilingUi()
     }
 
     fun selectWorkspace(workspace: NotionWorkspace) {
@@ -146,9 +156,9 @@ class NotionFilingViewModel(
                     audioFile = audioFile(dir),
                     filesProperty = workspace.filesProperty,
                 ) { progress -> _ui.update { it.copy(filing = FilingState.Working(progress)) } }
-                recordMarker(dir, workspace, result)
+                val markerSaved = recordMarker(dir, workspace, result)
                 createdPage = null
-                _ui.update { it.copy(filing = FilingState.Done(result)) }
+                _ui.update { it.copy(filing = FilingState.Done(result, markerSaved)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -161,10 +171,11 @@ class NotionFilingViewModel(
         _ui.update { it.copy(filing = FilingState.Idle) }
     }
 
-    private suspend fun recordMarker(dir: File, workspace: NotionWorkspace, result: FilingResult) {
-        if (!(result.notesWritten || result.transcriptWritten || result.audioAttached)) return
+    private suspend fun recordMarker(dir: File, workspace: NotionWorkspace, result: FilingResult): Boolean {
+        if (!(result.notesWritten || result.transcriptWritten || result.audioAttached)) return true
         val marker = NotionFilingMarker(
             workspace = workspace.name,
+            workspaceId = workspace.id,
             pageId = result.page.id,
             pageUrl = result.page.url,
             filedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
@@ -172,14 +183,20 @@ class NotionFilingViewModel(
             transcript = result.transcriptWritten,
             audio = result.audioAttached,
         )
-        withContext(Dispatchers.IO) { runCatching { repository.recordNotionFiling(dir, marker) } }
+        return withContext(Dispatchers.IO) { runCatching { repository.recordNotionFiling(dir, marker) }.isSuccess }
     }
 
     private fun Exception.asNotionError(): NotionError =
-        this as? NotionError ?: NotionError(NotionError.Kind.NETWORK, message.orEmpty(), arg = message.orEmpty())
+        this as? NotionError ?: NotionError(NotionError.Kind.UNEXPECTED, message.orEmpty(), arg = message.orEmpty())
 
-    private fun clientFor(workspace: NotionWorkspace): NotionClient {
-        val token = tokens.get(workspace.id)
+    private suspend fun clientFor(workspace: NotionWorkspace): NotionClient {
+        val token = withContext(Dispatchers.IO) {
+            try {
+                tokens.get(workspace.id)
+            } catch (e: Exception) {
+                throw NotionError(NotionError.Kind.TOKEN_STORE, "Could not read the stored token: ${e.message}")
+            }
+        }
         if (token.isBlank()) {
             throw NotionError(
                 NotionError.Kind.NO_TOKEN,

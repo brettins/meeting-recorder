@@ -10,6 +10,7 @@ import kotlinx.serialization.json.jsonPrimitive
 /** One entry of the `notion_filings` list in meeting.json. */
 data class NotionFilingMarker(
     val workspace: String,
+    val workspaceId: String,
     val pageId: String,
     val pageUrl: String,
     val filedAt: String,
@@ -20,6 +21,7 @@ data class NotionFilingMarker(
     fun toJson(): JsonObject = JsonObject(
         mapOf(
             "workspace" to JsonPrimitive(workspace),
+            "workspace_id" to JsonPrimitive(workspaceId),
             "page_id" to JsonPrimitive(pageId),
             "page_url" to JsonPrimitive(pageUrl),
             "filed_at" to JsonPrimitive(filedAt),

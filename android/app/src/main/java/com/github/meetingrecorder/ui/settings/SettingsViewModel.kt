@@ -11,8 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // Plain ViewModel — no Context needed; Config and the token store are constructor-injected via appViewModelFactory.
 class SettingsViewModel(
@@ -106,30 +106,43 @@ class SettingsViewModel(
         }
     }
 
+    private val tokenErrorState = MutableStateFlow(false)
+    val notionTokenError: StateFlow<Boolean> = tokenErrorState.asStateFlow()
+
+    fun dismissNotionTokenError() {
+        tokenErrorState.value = false
+    }
+
+    private fun changeToken(operation: () -> Unit, onSaved: () -> Unit) {
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching(operation).isSuccess }
+            if (saved) {
+                tokenErrorState.value = false
+                onSaved()
+                refreshTokenPresence()
+            } else {
+                tokenErrorState.value = true
+            }
+        }
+    }
+
     fun addNotionWorkspace(name: String, databaseLink: String, token: String, filesProperty: String) {
         val updated = NotionWorkspaces.add(_notionWorkspaces.value, name, databaseLink, filesProperty)
-        viewModelScope.launch(Dispatchers.IO) {
-            tokens.set(updated.last().id, token)
-            refreshTokenPresence()
-        }
-        saveNotionWorkspaces(updated)
+        changeToken({ tokens.set(updated.last().id, token) }) { saveNotionWorkspaces(updated) }
     }
 
     /** Edits a workspace; a blank [token] keeps the stored one. */
     fun updateNotionWorkspace(id: String, name: String, databaseLink: String, token: String, filesProperty: String) {
-        if (token.isNotBlank()) {
-            viewModelScope.launch(Dispatchers.IO) {
-                tokens.set(id, token)
-                refreshTokenPresence()
-            }
+        val updated = NotionWorkspaces.update(_notionWorkspaces.value, id, name, databaseLink, filesProperty)
+        if (token.isBlank()) {
+            saveNotionWorkspaces(updated)
+        } else {
+            changeToken({ tokens.set(id, token) }) { saveNotionWorkspaces(updated) }
         }
-        saveNotionWorkspaces(NotionWorkspaces.update(_notionWorkspaces.value, id, name, databaseLink, filesProperty))
     }
 
     fun removeNotionWorkspace(id: String) {
-        viewModelScope.launch(Dispatchers.IO) { tokens.remove(id) }
-        tokenPresentState.update { it - id }
-        saveNotionWorkspaces(NotionWorkspaces.remove(_notionWorkspaces.value, id))
+        changeToken({ tokens.remove(id) }) { saveNotionWorkspaces(NotionWorkspaces.remove(_notionWorkspaces.value, id)) }
     }
 
     private fun saveNotionWorkspaces(workspaces: List<NotionWorkspace>) {

@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,6 +37,7 @@ private const val DEFAULT_FILES_PROPERTY = "Recording"
 internal fun NotionTab(viewModel: SettingsViewModel) {
     val workspaces by viewModel.notionWorkspaces.collectAsState()
     val tokenPresent by viewModel.notionTokenPresent.collectAsState()
+    val tokenError by viewModel.notionTokenError.collectAsState()
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf<String?>(null) }
@@ -48,6 +50,9 @@ internal fun NotionTab(viewModel: SettingsViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(stringResource(R.string.notion_settings_intro), style = MaterialTheme.typography.bodyMedium)
+        if (tokenError) {
+            Text(stringResource(R.string.notion_err_token_save), color = MaterialTheme.colorScheme.error)
+        }
         if (workspaces.isEmpty()) {
             Text(stringResource(R.string.notion_no_workspaces), style = MaterialTheme.typography.bodySmall)
         }
@@ -116,7 +121,7 @@ private fun WorkspaceDialog(
 ) {
     var name by rememberSaveable { mutableStateOf(existing?.name.orEmpty()) }
     var link by rememberSaveable { mutableStateOf(existing?.databaseId.orEmpty()) }
-    var token by rememberSaveable { mutableStateOf("") }
+    var token by remember { mutableStateOf("") }
     var files by rememberSaveable { mutableStateOf(existing?.filesProperty ?: DEFAULT_FILES_PROPERTY) }
     val linkValid = NotionWorkspaces.isUsable(name, link)
 
