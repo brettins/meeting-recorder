@@ -9,7 +9,10 @@ set -e
 # process has "meeting_recorder" in it any more. The old underscore pattern
 # therefore matched nothing and left the daemon running.
 #
+# The pattern is anchored: an unanchored one also matched any command line that
+# merely ended in "meeting-recorder", including the installer script itself.
+#
 # SIGTERM, not SIGKILL: the daemon handles it, stops an in-progress recording
 # keeping the audio, and lets queued jobs drain.
-pkill -TERM -f 'meeting-recorder(-daemon|-window|-process|-install)?$' 2>/dev/null || true
+pkill -TERM -f '^meeting-recorder(-daemon|-window|-process|-install)?$' 2>/dev/null || true
 sleep 1
