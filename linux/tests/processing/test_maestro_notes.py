@@ -7,7 +7,9 @@ from meeting_recorder.processing import maestro_notes
 from meeting_recorder.processing.maestro_notes import (
     POSTED_KEY,
     backfill,
+    eligible,
     format_comment,
+    main,
     notes_key,
     pending,
     post_notes,
@@ -141,3 +143,63 @@ class TestPending:
         (posted / "meeting.json").write_text(json.dumps({POSTED_KEY: "BRT-46"}))
         _meeting(tmp_path, "2026-10-19_09-37_C", notes=None)
         assert pending(tmp_path, CONFIG) == [waiting]
+
+
+class TestEligibility:
+    def test_a_meeting_posted_to_another_key_is_still_pending(self, tmp_path):
+        folder = _meeting(tmp_path)
+        (folder / "meeting.json").write_text(json.dumps({POSTED_KEY: "BRT-99"}))
+        assert eligible(folder, "BRT-46") is True
+        assert eligible(folder, "BRT-99") is False
+
+    def test_a_malformed_meeting_json_is_skipped_by_both_lists(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(maestro_notes.shutil, "which", lambda _n: "/bin/maestro")
+        folder = _meeting(tmp_path)
+        (folder / "meeting.json").write_text("{not json")
+        run = _Recorder()
+        assert pending(tmp_path, CONFIG) == []
+        assert backfill(tmp_path, CONFIG, run_fn=run) == []
+        assert run.calls == []
+
+    def test_pending_and_backfill_agree(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(maestro_notes.shutil, "which", lambda _n: "/bin/maestro")
+        _meeting(tmp_path, "2026-10-20_09-37_A")
+        _meeting(tmp_path, "2026-10-21_09-37_B", notes=None)
+        bad = _meeting(tmp_path, "2026-10-22_09-37_C")
+        (bad / "meeting.json").write_text("[]")
+        expected = pending(tmp_path, CONFIG)
+        assert backfill(tmp_path, CONFIG, run_fn=_Recorder()) == expected
+
+
+class TestMainDryRun:
+    def _run(self, tmp_path, monkeypatch, argv, config):
+        from meeting_recorder.config import settings
+
+        monkeypatch.setattr(settings, "load", lambda: {**config, "output_folder": str(tmp_path)})
+        monkeypatch.setattr(
+            settings, "save", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("saved"))
+        )
+        monkeypatch.setattr(
+            maestro_notes.subprocess,
+            "run",
+            lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("maestro ran")),
+        )
+        return main(argv)
+
+    def test_a_dry_run_changes_nothing(self, tmp_path, monkeypatch, capsys):
+        folder = _meeting(tmp_path)
+        before = (folder / "meeting.json").read_text()
+        code = self._run(tmp_path, monkeypatch, ["--backfill", "--dry-run", "--key", "BRT-46"], {})
+        assert code == 0
+        assert "1 meetings would be posted to BRT-46" in capsys.readouterr().out
+        assert (folder / "meeting.json").read_text() == before
+
+    def test_without_a_key_nothing_is_assumed(self, tmp_path, monkeypatch):
+        _meeting(tmp_path)
+        assert self._run(tmp_path, monkeypatch, ["--backfill", "--dry-run"], {}) == 1
+
+    def test_dry_run_alone_is_an_error(self, tmp_path, monkeypatch):
+        import pytest
+
+        with pytest.raises(SystemExit):
+            self._run(tmp_path, monkeypatch, ["--dry-run", "--key", "BRT-46"], {})
