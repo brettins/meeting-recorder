@@ -57,6 +57,11 @@ class TestFormatComment:
         assert "notes continue in the folder" in text
         assert len(text) < 31000
 
+    def test_odd_tags_do_not_raise(self, tmp_path):
+        folder = _meeting(tmp_path, meta={"title": "T", "tags": [1, "x"]})
+        assert "1 · x" in format_comment(folder, "n")
+        assert format_comment(_meeting(tmp_path, "2026-10-21_10-00_X", meta={"tags": 5}), "n")
+
 
 class TestPostNotes:
     def test_posts_to_the_configured_item_and_records_it(self, tmp_path, monkeypatch):
@@ -108,6 +113,13 @@ class TestPostNotes:
 
 
 class TestBackfill:
+    def test_one_bad_meeting_does_not_stop_the_rest(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(maestro_notes.shutil, "which", lambda _n: "/bin/maestro")
+        bad = _meeting(tmp_path, "2026-10-20_09-37_Bad")
+        bad.joinpath("notes.md").write_bytes(b"\xff\xfe")
+        good = _meeting(tmp_path, "2026-10-21_09-37_Good")
+        assert backfill(tmp_path, CONFIG, run_fn=_Recorder()) == [good]
+
     def test_posts_each_unposted_meeting_oldest_first(self, tmp_path, monkeypatch):
         monkeypatch.setattr(maestro_notes.shutil, "which", lambda _n: "/bin/maestro")
         b = _meeting(tmp_path, "2026-10-21_09-37_B")
