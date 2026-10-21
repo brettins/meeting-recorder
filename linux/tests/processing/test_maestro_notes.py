@@ -9,6 +9,7 @@ from meeting_recorder.processing.maestro_notes import (
     backfill,
     format_comment,
     notes_key,
+    pending,
     post_notes,
 )
 
@@ -131,3 +132,12 @@ class TestBackfill:
 def test_notes_key_is_trimmed():
     assert notes_key({"maestro_notes_key": " BRT-46 "}) == "BRT-46"
     assert notes_key({}) == ""
+
+
+class TestPending:
+    def test_lists_only_meetings_with_notes_that_are_not_posted(self, tmp_path):
+        waiting = _meeting(tmp_path, "2026-10-20_09-37_A")
+        posted = _meeting(tmp_path, "2026-10-21_09-37_B")
+        (posted / "meeting.json").write_text(json.dumps({POSTED_KEY: "BRT-46"}))
+        _meeting(tmp_path, "2026-10-19_09-37_C", notes=None)
+        assert pending(tmp_path, CONFIG) == [waiting]

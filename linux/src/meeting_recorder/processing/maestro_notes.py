@@ -85,6 +85,16 @@ def post_notes(
     return True
 
 
+def pending(root: Path, config: dict[str, Any]) -> list[Path]:
+    """Meetings under *root* with notes that have not been posted to the configured key."""
+    key = notes_key(config)
+    return [
+        folder
+        for folder in sorted(p for p in root.iterdir() if p.is_dir())
+        if (folder / "notes.md").exists() and read_metadata(folder).get(POSTED_KEY) != key
+    ]
+
+
 def backfill(root: Path, config: dict[str, Any], *, run_fn: RunFn = subprocess.run) -> list[Path]:
     """Post every meeting under *root* that has notes and was not posted, oldest first."""
     posted: list[Path] = []
@@ -102,8 +112,11 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Post past meeting notes to Maestro.")
     parser.add_argument("--backfill", action="store_true", help="post every unposted meeting")
+    parser.add_argument("--dry-run", action="store_true", help="list what --backfill would post")
     args = parser.parse_args(argv)
     config = settings.load()
+    if args.dry_run and not notes_key(config):
+        config["maestro_notes_key"] = "BRT-46"
     if not notes_key(config):
         print("Set maestro_notes_key in the config first.", file=sys.stderr)
         return 1
@@ -111,6 +124,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     root = Path(config.get("output_folder", "~/meetings")).expanduser()
+    if args.dry_run:
+        waiting = pending(root, config)
+        print(f"{len(waiting)} meetings would be posted to {notes_key(config)}:")
+        for folder in waiting:
+            print(f"  {folder.name}")
+        return 0
     posted = backfill(root, config)
     print(f"Posted {len(posted)} meetings to {notes_key(config)}.")
     return 0
