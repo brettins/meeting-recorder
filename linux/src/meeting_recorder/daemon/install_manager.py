@@ -45,11 +45,15 @@ class InstallManager:
             logger.info("Install %s already running — ignoring duplicate request", key)
             return key
         self._running[key] = {"handle": None, "status": "Starting…"}
-        handle = self._get_launcher().launch(
-            spec_json,
-            on_status=lambda text, k=key: self._progress(k, text),
-            on_finished=lambda ok, msg, k=key: self._finished(k, ok, msg),
-        )
+        try:
+            handle = self._get_launcher().launch(
+                spec_json,
+                on_status=lambda text, k=key: self._progress(k, text),
+                on_finished=lambda ok, msg, k=key: self._finished(k, ok, msg),
+            )
+        except Exception:
+            self._running.pop(key, None)
+            raise
         self._running[key]["handle"] = handle
         logger.info("Started install %s", key)
         return key

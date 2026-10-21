@@ -13,6 +13,7 @@ from .self_update import (
     InstallSource,
     RunFn,
     checkout_revision,
+    install_dir,
     read_install_source,
     run_update,
 )
@@ -48,9 +49,25 @@ def interval_seconds(config: dict[str, Any]) -> int:
 GIT_TIMEOUT_SECONDS = 120
 
 
+def _has_ssh_override(command: list[str]) -> bool:
+    """Whether the clone already configures its own ssh command (a deploy key, say)."""
+    if "GIT_SSH_COMMAND" in os.environ or len(command) < 3 or command[1] != "-C":
+        return "GIT_SSH_COMMAND" in os.environ
+    probe = subprocess.run(
+        ["git", "-C", command[2], "config", "--get", "core.sshCommand"],
+        capture_output=True,
+        text=True,
+        timeout=GIT_TIMEOUT_SECONDS,
+        check=False,
+    )
+    return probe.returncode == 0
+
+
 def _run_git(command: list[str]) -> subprocess.CompletedProcess[str]:
     """Run git without ever prompting for a passphrase or password."""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    if not _has_ssh_override(command):
+        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
     env.pop("SSH_ASKPASS", None)
     return subprocess.run(
         command,
@@ -61,6 +78,30 @@ def _run_git(command: list[str]) -> subprocess.CompletedProcess[str]:
         env=env,
         stdin=subprocess.DEVNULL,
     )
+
+
+SMOKE_TIMEOUT_SECONDS = 60
+
+
+def smoke_test(run_fn: Any = subprocess.run) -> tuple[bool, str]:
+    """Import the installed daemon module in a fresh interpreter before restarting onto it."""
+    root = install_dir()
+    env = {**os.environ, "PYTHONPATH": str(root / "linux" / "src")}
+    try:
+        result = run_fn(
+            [str(root / "venv" / "bin" / "python"), "-c", "import meeting_recorder.daemon.app"],
+            capture_output=True,
+            text=True,
+            timeout=SMOKE_TIMEOUT_SECONDS,
+            check=False,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"could not run the smoke test: {exc}"
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip().splitlines()
+        return False, detail[-1] if detail else f"exit status {result.returncode}"
+    return True, "ok"
 
 
 def _git(repo: str, run_fn: RunFn, *args: str) -> tuple[int, str]:

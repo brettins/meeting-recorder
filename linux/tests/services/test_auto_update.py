@@ -8,6 +8,7 @@ from meeting_recorder.services.auto_update import (
     check_and_apply,
     enabled,
     interval_seconds,
+    smoke_test,
 )
 from meeting_recorder.services.self_update import InstallSource
 
@@ -126,3 +127,18 @@ class TestConfig:
         assert interval_seconds({"auto_update_hours": 0}) == int(
             auto_update.MIN_INTERVAL_HOURS * 3600
         )
+
+
+class TestSmokeTest:
+    def test_a_clean_import_passes(self):
+        assert smoke_test(lambda *_a, **_k: _result(0)) == (True, "ok")
+
+    def test_an_import_error_fails_with_its_last_line(self):
+        ok, detail = smoke_test(lambda *_a, **_k: _result(1, "", "Traceback\nImportError: nope"))
+        assert ok is False and "ImportError: nope" in detail
+
+    def test_a_missing_interpreter_fails(self):
+        def boom(*_a, **_k):
+            raise FileNotFoundError("python")
+
+        assert smoke_test(boom)[0] is False

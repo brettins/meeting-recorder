@@ -82,11 +82,29 @@ class TestSchedule:
         _Timers(monkeypatch)
         idle = {"now": False}
         restarted = []
-        updater = AutoUpdater(lambda: idle["now"], lambda: restarted.append(1))
+        updater = AutoUpdater(
+            lambda: idle["now"], lambda: restarted.append(1), smoke=lambda: (True, "ok")
+        )
         assert updater._restart_when_idle() is auto_updater.GLib.SOURCE_CONTINUE
         assert restarted == []
         idle["now"] = True
         assert updater._restart_when_idle() is auto_updater.GLib.SOURCE_REMOVE
+        assert restarted == [1]
+
+    def test_a_failing_start_check_blocks_the_restart(self, monkeypatch):
+        _Timers(monkeypatch)
+        restarted = []
+        updater = AutoUpdater(
+            lambda: True, lambda: restarted.append(1), smoke=lambda: (False, "ImportError: x")
+        )
+        assert updater._restart_when_idle() is auto_updater.GLib.SOURCE_REMOVE
+        assert restarted == []
+
+    def test_a_passing_start_check_restarts(self, monkeypatch):
+        _Timers(monkeypatch)
+        restarted = []
+        updater = AutoUpdater(lambda: True, lambda: restarted.append(1), smoke=lambda: (True, "ok"))
+        updater._restart_when_idle()
         assert restarted == [1]
 
     def test_a_failed_update_never_schedules_a_restart(self, monkeypatch):

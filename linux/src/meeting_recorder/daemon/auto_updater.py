@@ -41,10 +41,12 @@ class AutoUpdater:
         is_idle: Callable[[], bool],
         restart: Callable[[], None],
         check: Callable[[], auto_update.UpdateOutcome] = auto_update.check_and_apply,
+        smoke: Callable[[], tuple[bool, str]] = auto_update.smoke_test,
     ) -> None:
         self._is_idle = is_idle
         self._restart = restart
         self._check = check
+        self._smoke = smoke
         self._restart_polling = False
 
     def start(self) -> None:
@@ -80,7 +82,13 @@ class AutoUpdater:
     def _restart_when_idle(self) -> bool:
         if not self._is_idle():
             return GLib.SOURCE_CONTINUE
-        logger.info("Auto-update: idle, restarting the daemon")
         self._restart_polling = False
+        ok, detail = self._smoke()
+        if not ok:
+            logger.error(
+                "Auto-update: new version failed its start check (%s); not restarting", detail
+            )
+            return GLib.SOURCE_REMOVE
+        logger.info("Auto-update: idle, restarting the daemon")
         self._restart()
         return GLib.SOURCE_REMOVE
