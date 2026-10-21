@@ -60,6 +60,9 @@ fun NotionFilingDialog(
 
     val loaded = ui.pages as? PagesState.Loaded
     val visiblePages = loaded?.let { NotionPicker.filterPages(it.pages, query) }.orEmpty()
+    LaunchedEffect(query, loaded) {
+        if (selectedPageId != null && visiblePages.none { it.id == selectedPageId }) selectedPageId = null
+    }
     val suggestion = ui.recorded?.let { NotionPicker.suggestPage(visiblePages, it) }
     LaunchedEffect(suggestion?.id, loaded?.dataSourceId) {
         if (selectedPageId == null) selectedPageId = suggestion?.id
@@ -114,7 +117,7 @@ fun NotionFilingDialog(
                         TextButton(onClick = viewModel::loadPages) { Text(stringResource(R.string.action_retry)) }
                     }
                     is PagesState.Loaded -> {
-                        if (NotionApi.exceedsFreePlan(ui.audioBytes)) {
+                        if (NotionApi.exceedsFreePlan(ui.audioBytes) && NotionApi.uploadSizeError(ui.audioBytes) == null) {
                             Text(
                                 stringResource(R.string.notion_free_plan_hint, "%.1f".format(ui.audioBytes / (1024.0 * 1024.0))),
                                 style = MaterialTheme.typography.bodySmall,

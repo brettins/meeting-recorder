@@ -134,13 +134,22 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
         val merged = readMetaTree(metaFile).toMutableMap()
         if (title != null) merged["title"] = JsonPrimitive(title) else merged.remove("title")
         if (durationSeconds != null) merged["duration_seconds"] = JsonPrimitive(durationSeconds) else merged.remove("duration_seconds")
-        metaFile.writeText(JsonObject(merged).toString())
+        writeMetaAtomically(metaFile, JsonObject(merged).toString())
     }
 
     /** Records that a meeting was filed to a Notion page in meeting.json, keeping every other key. */
     fun recordNotionFiling(dir: File, filing: NotionFilingMarker) {
         val metaFile = File(dir, "meeting.json")
-        metaFile.writeText(NotionFilingMarker.apply(readMetaTree(metaFile), filing).toString())
+        writeMetaAtomically(metaFile, NotionFilingMarker.apply(readMetaTree(metaFile), filing).toString())
+    }
+
+    private fun writeMetaAtomically(metaFile: File, text: String) {
+        val temp = File(metaFile.parentFile, "meeting.json.tmp")
+        temp.writeText(text)
+        if (!temp.renameTo(metaFile)) {
+            metaFile.writeText(text)
+            temp.delete()
+        }
     }
 
     private fun readMetaTree(metaFile: File): Map<String, JsonElement> {

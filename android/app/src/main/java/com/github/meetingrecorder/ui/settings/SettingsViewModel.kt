@@ -1,14 +1,18 @@
 package com.github.meetingrecorder.ui.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.github.meetingrecorder.data.AudioQuality
 import com.github.meetingrecorder.data.Config
 import com.github.meetingrecorder.data.notion.NotionTokenStore
 import com.github.meetingrecorder.data.notion.NotionWorkspace
 import com.github.meetingrecorder.data.notion.NotionWorkspaces
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 // Plain ViewModel — no Context needed; Config and the token store are constructor-injected via appViewModelFactory.
 class SettingsViewModel(
@@ -87,22 +91,44 @@ class SettingsViewModel(
     private val _notionWorkspaces = MutableStateFlow(config.notionWorkspaces)
     val notionWorkspaces: StateFlow<List<NotionWorkspace>> = _notionWorkspaces.asStateFlow()
 
-    fun hasNotionToken(workspaceId: String): Boolean = tokens.get(workspaceId).isNotBlank()
+    private val tokenPresentState = MutableStateFlow<Set<String>>(emptySet())
+    val notionTokenPresent: StateFlow<Set<String>> = tokenPresentState.asStateFlow()
+
+    init {
+        refreshTokenPresence()
+    }
+
+    private fun refreshTokenPresence() {
+        viewModelScope.launch(Dispatchers.IO) {
+            tokenPresentState.value = runCatching {
+                _notionWorkspaces.value.filter { tokens.get(it.id).isNotBlank() }.map { it.id }.toSet()
+            }.getOrDefault(emptySet())
+        }
+    }
 
     fun addNotionWorkspace(name: String, databaseLink: String, token: String, filesProperty: String) {
         val updated = NotionWorkspaces.add(_notionWorkspaces.value, name, databaseLink, filesProperty)
-        tokens.set(updated.last().id, token)
+        viewModelScope.launch(Dispatchers.IO) {
+            tokens.set(updated.last().id, token)
+            refreshTokenPresence()
+        }
         saveNotionWorkspaces(updated)
     }
 
     /** Edits a workspace; a blank [token] keeps the stored one. */
     fun updateNotionWorkspace(id: String, name: String, databaseLink: String, token: String, filesProperty: String) {
-        if (token.isNotBlank()) tokens.set(id, token)
+        if (token.isNotBlank()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                tokens.set(id, token)
+                refreshTokenPresence()
+            }
+        }
         saveNotionWorkspaces(NotionWorkspaces.update(_notionWorkspaces.value, id, name, databaseLink, filesProperty))
     }
 
     fun removeNotionWorkspace(id: String) {
-        tokens.remove(id)
+        viewModelScope.launch(Dispatchers.IO) { tokens.remove(id) }
+        tokenPresentState.update { it - id }
         saveNotionWorkspaces(NotionWorkspaces.remove(_notionWorkspaces.value, id))
     }
 

@@ -28,7 +28,7 @@ const val NOTION_VERSION = "2025-09-03"
 const val SINGLE_PART_LIMIT: Long = 20L * 1024 * 1024
 const val FREE_PLAN_FILE_LIMIT: Long = 5L * 1024 * 1024
 
-/** What went wrong, so the UI can pick a localised sentence; [message] is the English fallback. */
+/** A failed Notion call; [message] is the English fallback. */
 class NotionError(
     val kind: Kind,
     message: String,

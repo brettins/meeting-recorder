@@ -66,8 +66,13 @@ class NotionFilingViewModel(
 
     private var meetingDir: File? = null
     private var loadJob: Job? = null
+    private var createdPage: NotionPage? = null
+    private var openedPath: String? = null
 
     fun open(meetingPath: String) {
+        if (openedPath == meetingPath) return
+        openedPath = meetingPath
+        createdPage = null
         val dir = File(meetingPath)
         meetingDir = dir
         val workspaces = config.notionWorkspaces
@@ -95,6 +100,7 @@ class NotionFilingViewModel(
     }
 
     fun selectWorkspace(workspace: NotionWorkspace) {
+        createdPage = null
         _ui.update { it.copy(selected = workspace, pages = PagesState.Idle, filing = FilingState.Idle) }
         loadPages()
     }
@@ -112,8 +118,8 @@ class NotionFilingViewModel(
                 _ui.update { it.copy(pages = PagesState.Loaded(pages, dataSourceId, NotionApi.titlePropertyName(schema))) }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: NotionError) {
-                _ui.update { it.copy(pages = PagesState.Failed(e)) }
+            } catch (e: Exception) {
+                _ui.update { it.copy(pages = PagesState.Failed(e.asNotionError())) }
             }
         }
     }
@@ -130,7 +136,8 @@ class NotionFilingViewModel(
         viewModelScope.launch {
             try {
                 val client = clientFor(workspace)
-                val target = page ?: client.createPage(loaded.dataSourceId, newTitle.trim(), loaded.titleProperty)
+                val target = page ?: createdPage
+                    ?: client.createPage(loaded.dataSourceId, newTitle.trim(), loaded.titleProperty).also { createdPage = it }
                 val result = NotionFiling.fileMeeting(
                     client = client,
                     page = target,
@@ -139,27 +146,13 @@ class NotionFilingViewModel(
                     audioFile = audioFile(dir),
                     filesProperty = workspace.filesProperty,
                 ) { progress -> _ui.update { it.copy(filing = FilingState.Working(progress)) } }
-                if (result.notesWritten || result.transcriptWritten || result.audioAttached) {
-                    withContext(Dispatchers.IO) {
-                        repository.recordNotionFiling(
-                            dir,
-                            NotionFilingMarker(
-                                workspace = workspace.name,
-                                pageId = result.page.id,
-                                pageUrl = result.page.url,
-                                filedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
-                                notes = result.notesWritten,
-                                transcript = result.transcriptWritten,
-                                audio = result.audioAttached,
-                            ),
-                        )
-                    }
-                }
+                recordMarker(dir, workspace, result)
+                createdPage = null
                 _ui.update { it.copy(filing = FilingState.Done(result)) }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: NotionError) {
-                _ui.update { it.copy(filing = FilingState.Failed(e)) }
+            } catch (e: Exception) {
+                _ui.update { it.copy(filing = FilingState.Failed(e.asNotionError())) }
             }
         }
     }
@@ -167,6 +160,23 @@ class NotionFilingViewModel(
     fun resetFiling() {
         _ui.update { it.copy(filing = FilingState.Idle) }
     }
+
+    private suspend fun recordMarker(dir: File, workspace: NotionWorkspace, result: FilingResult) {
+        if (!(result.notesWritten || result.transcriptWritten || result.audioAttached)) return
+        val marker = NotionFilingMarker(
+            workspace = workspace.name,
+            pageId = result.page.id,
+            pageUrl = result.page.url,
+            filedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+            notes = result.notesWritten,
+            transcript = result.transcriptWritten,
+            audio = result.audioAttached,
+        )
+        withContext(Dispatchers.IO) { runCatching { repository.recordNotionFiling(dir, marker) } }
+    }
+
+    private fun Exception.asNotionError(): NotionError =
+        this as? NotionError ?: NotionError(NotionError.Kind.NETWORK, message.orEmpty(), arg = message.orEmpty())
 
     private fun clientFor(workspace: NotionWorkspace): NotionClient {
         val token = tokens.get(workspace.id)
@@ -181,7 +191,7 @@ class NotionFilingViewModel(
     }
 
     private fun audioFile(dir: File): File? =
-        sequenceOf("recording.m4a", "recording.mp3").map { File(dir, it) }.firstOrNull { it.exists() }
+        sequenceOf("recording.mp3", "recording.m4a").map { File(dir, it) }.firstOrNull { it.exists() }
 
     private fun parseRecorded(name: String): LocalDateTime? = try {
         LocalDateTime.parse(name.take(16), DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm"))

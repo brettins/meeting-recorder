@@ -2,6 +2,7 @@ package com.github.meetingrecorder.data.notion
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.jsonArray
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -79,7 +80,13 @@ object NotionWorkspaces {
     /** Decodes stored workspaces, dropping unusable entries and duplicate ids; malformed text yields none. */
     fun decode(text: String): List<NotionWorkspace> {
         val parsed = try {
-            lenientNotionJson.decodeFromString(ListSerializer(NotionWorkspace.serializer()), text)
+            lenientNotionJson.parseToJsonElement(text).jsonArray.mapNotNull { entry ->
+                try {
+                    lenientNotionJson.decodeFromJsonElement(NotionWorkspace.serializer(), entry)
+                } catch (_: Exception) {
+                    null
+                }
+            }
         } catch (_: Exception) {
             return emptyList()
         }

@@ -8,7 +8,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Markdown to Notion block conversion, ported from the desktop's notion_blocks.py. */
+/** Markdown to Notion block conversion, mirroring the desktop's notion_blocks.py. */
 object NotionBlocks {
     const val MAX_TEXT_LENGTH = 2000
     const val MAX_RICH_TEXT_ITEMS = 100
@@ -223,7 +223,7 @@ object NotionBlocks {
         return blocks
     }
 
-    /** Wraps a transcript in a collapsed toggle so it does not swamp the page. */
+    /** Wraps a transcript in a collapsed toggle. */
     fun transcriptToggle(transcript: String, label: String = "Transcript"): JsonObject {
         val paragraphs = transcript.replace("\r\n", "\n").split("\n\n").map { it.trim() }.filter { it.isNotEmpty() }
         val packed = packParagraphs(paragraphs)
@@ -259,7 +259,7 @@ object NotionBlocks {
         return packed
     }
 
-    /** Splits blocks into batches Notion accepts in one append call. */
+    /** Splits blocks into batches of 100, the most Notion accepts per append. */
     fun chunkBlocks(blocks: List<JsonObject>): List<List<JsonObject>> =
         blocks.chunked(MAX_BLOCKS_PER_REQUEST)
 }

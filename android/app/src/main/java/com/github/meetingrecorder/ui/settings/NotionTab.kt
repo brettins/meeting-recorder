@@ -35,6 +35,7 @@ private const val DEFAULT_FILES_PROPERTY = "Recording"
 @Composable
 internal fun NotionTab(viewModel: SettingsViewModel) {
     val workspaces by viewModel.notionWorkspaces.collectAsState()
+    val tokenPresent by viewModel.notionTokenPresent.collectAsState()
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf<String?>(null) }
@@ -55,7 +56,7 @@ internal fun NotionTab(viewModel: SettingsViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(workspace.name, style = MaterialTheme.typography.titleMedium)
-                    val tokenLabel = if (viewModel.hasNotionToken(workspace.id)) {
+                    val tokenLabel = if (workspace.id in tokenPresent) {
                         R.string.notion_token_stored
                     } else {
                         R.string.notion_token_missing

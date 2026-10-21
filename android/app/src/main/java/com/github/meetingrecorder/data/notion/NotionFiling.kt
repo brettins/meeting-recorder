@@ -1,5 +1,7 @@
 package com.github.meetingrecorder.data.notion
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Why part of a meeting did not reach Notion. */
@@ -35,7 +37,7 @@ object NotionFiling {
             if (transcript.isNotBlank()) add(NotionBlocks.transcriptToggle(transcript, transcriptLabel))
         }
 
-    /** Writes notes and transcript onto [page], then attaches the audio; an audio failure keeps the notes. */
+    /** Writes notes and transcript onto [page], then attaches the recording; if that fails, the notes stay filed. */
     suspend fun fileMeeting(
         client: NotionClient,
         page: NotionPage,
@@ -45,9 +47,11 @@ object NotionFiling {
         filesProperty: String,
         onProgress: (Progress) -> Unit = {},
     ): FilingResult {
-        val notes = readText(notesFile)
-        val transcript = readText(transcriptFile)
-        val body = buildBody(notes, transcript)
+        val (notes, transcript, body) = withContext(Dispatchers.IO) {
+            val n = readText(notesFile)
+            val t = readText(transcriptFile)
+            Triple(n, t, buildBody(n, t))
+        }
         val warnings = mutableListOf<FilingWarning>()
         var notesWritten = false
         var transcriptWritten = false
