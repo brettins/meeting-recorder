@@ -34,7 +34,9 @@ def format_comment(meeting_dir: Path, notes: str) -> str:
     duration = meta.get("duration_seconds")
     if isinstance(duration, int | float) and duration > 0:
         parts.append(format_duration(int(duration)))
-    parts.extend(meta.get("tags") or [])
+    tags = meta.get("tags")
+    if isinstance(tags, list):
+        parts.extend(str(tag) for tag in tags)
     body = notes.strip()
     if len(body) > MAX_NOTES_CHARS:
         body = body[:MAX_NOTES_CHARS].rstrip() + "\n\n…notes continue in the folder."
@@ -64,10 +66,10 @@ def post_notes(
             input=format_comment(meeting_dir, notes_file.read_text(encoding="utf-8")),
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=15,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         logger.warning("Could not post notes for %s: %s", meeting_dir.name, exc)
         return False
     if result.returncode != 0:
@@ -87,8 +89,11 @@ def backfill(root: Path, config: dict[str, Any], *, run_fn: RunFn = subprocess.r
     """Post every meeting under *root* that has notes and was not posted, oldest first."""
     posted: list[Path] = []
     for folder in sorted(p for p in root.iterdir() if p.is_dir()):
-        if post_notes(folder, config, run_fn=run_fn):
-            posted.append(folder)
+        try:
+            if post_notes(folder, config, run_fn=run_fn):
+                posted.append(folder)
+        except Exception as exc:
+            logger.warning("Skipped %s: %s", folder.name, exc)
     return posted
 
 

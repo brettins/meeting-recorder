@@ -134,7 +134,10 @@ class Pipeline:
         if self._notes_path:
             from .maestro_notes import post_notes
 
-            post_notes(self._notes_path.parent, self._config)
+            try:
+                post_notes(self._notes_path.parent, self._config)
+            except Exception as exc:
+                logger.warning("Posting notes to Maestro failed: %s", exc)
 
     @property
     def output_paths(self) -> tuple[Path | None, Path | None, Path | None]:
