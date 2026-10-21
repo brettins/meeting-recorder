@@ -90,7 +90,7 @@ class RecordingService : Service() {
                 _status.update { it.copy(silenced = true) }
             }
             enableDndIfRequested()
-            _status.value = RecorderStatus(RecordingPhase.RECORDING, file.absolutePath)
+            _status.update { it.copy(phase = RecordingPhase.RECORDING, outputPath = file.absolutePath) }
             startLevelMonitor()
         } catch (e: Exception) {
             _status.value = RecorderStatus(RecordingPhase.FAILED)
@@ -158,8 +158,7 @@ class RecordingService : Service() {
                 delay(LEVEL_POLL_MS)
                 val db = InputLevel.dbFromAmplitude(audioRecorder.maxAmplitude())
                 _level.value = db
-                val muted = _status.value.silenced
-                val warning = detector.update(db, muted)
+                val warning = detector.update(db, audioRecorder.clientSilenced)
                 if (warning != _status.value.silentInput) {
                     _status.update { it.copy(silentInput = warning) }
                     getSystemService(NotificationManager::class.java)
@@ -196,7 +195,11 @@ class RecordingService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notif_recording_title))
             .setContentText(
-                getString(if (silentInput) R.string.notif_silent_input_text else R.string.notif_recording_text),
+                if (silentInput) {
+                    getString(R.string.notif_silent_input_text, SilenceDetector.DEFAULT_WINDOW_SECS)
+                } else {
+                    getString(R.string.notif_recording_text)
+                },
             )
             .setSmallIcon(R.drawable.ic_stat_mic)
             .setOngoing(true)

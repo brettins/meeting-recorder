@@ -16,8 +16,9 @@ class SilenceDetector(
             reset()
             return false
         }
-        val start = quietSince ?: now().also { quietSince = it }
-        if (now() - start >= windowMs) warning = true
+        val t = now()
+        val start = quietSince ?: t.also { quietSince = it }
+        if (t - start >= windowMs) warning = true
         return warning
     }
 
@@ -29,5 +30,6 @@ class SilenceDetector(
     companion object {
         const val DEFAULT_THRESHOLD_DB = -45f
         const val DEFAULT_WINDOW_MS = 30_000L
+        const val DEFAULT_WINDOW_SECS = (DEFAULT_WINDOW_MS / 1000).toInt()
     }
 }

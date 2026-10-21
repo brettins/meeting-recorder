@@ -61,10 +61,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
 import com.github.meetingrecorder.audio.InputLevel
+import com.github.meetingrecorder.audio.SilenceDetector
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -233,8 +236,8 @@ fun MainScreen(
 
                 is RecordingState.Recording -> RecordingContent(
                     elapsedSecs = s.elapsedSecs,
-                    levelDb = viewModel.inputLevelDb.collectAsState().value,
-                    silentInput = viewModel.silentInput.collectAsState().value,
+                    levelDb = viewModel.inputLevelDb,
+                    silentInput = viewModel.silentInput,
                     onStop = { viewModel.stopRecording() },
                 )
 
@@ -304,7 +307,13 @@ private fun ReadyContent(
 }
 
 @Composable
-private fun RecordingContent(elapsedSecs: Int, levelDb: Float, silentInput: Boolean, onStop: () -> Unit) {
+private fun RecordingContent(
+    elapsedSecs: Int,
+    levelDb: StateFlow<Float>,
+    silentInput: StateFlow<Boolean>,
+    onStop: () -> Unit,
+) {
+    val silent by silentInput.collectAsStateWithLifecycle()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -315,8 +324,8 @@ private fun RecordingContent(elapsedSecs: Int, levelDb: Float, silentInput: Bool
             text = stringResource(R.string.status_recording, mins, secs),
             style = MaterialTheme.typography.headlineSmall,
         )
-        InputLevelMeter(levelDb = levelDb, warning = silentInput)
-        if (silentInput) SilentInputBanner()
+        InputLevelMeter(levelFlow = levelDb, warning = silent)
+        if (silent) SilentInputBanner()
         FloatingActionButton(
             onClick = onStop,
             containerColor = MaterialTheme.colorScheme.error,
@@ -327,7 +336,8 @@ private fun RecordingContent(elapsedSecs: Int, levelDb: Float, silentInput: Bool
 }
 
 @Composable
-private fun InputLevelMeter(levelDb: Float, warning: Boolean) {
+private fun InputLevelMeter(levelFlow: StateFlow<Float>, warning: Boolean) {
+    val levelDb by levelFlow.collectAsStateWithLifecycle()
     val meterDescription = stringResource(R.string.cd_input_level_meter)
     val label = if (levelDb <= InputLevel.FLOOR_DB) {
         stringResource(R.string.label_input_level_silent)
@@ -367,7 +377,7 @@ private fun SilentInputBanner() {
         ) {
             Icon(Icons.Default.Warning, contentDescription = null)
             Text(
-                text = stringResource(R.string.warning_silent_input),
+                text = stringResource(R.string.warning_silent_input, SilenceDetector.DEFAULT_WINDOW_SECS),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
