@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,11 +33,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -50,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -58,6 +64,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
+import com.github.meetingrecorder.audio.InputLevel
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -225,6 +233,8 @@ fun MainScreen(
 
                 is RecordingState.Recording -> RecordingContent(
                     elapsedSecs = s.elapsedSecs,
+                    levelDb = viewModel.inputLevelDb.collectAsState().value,
+                    silentInput = viewModel.silentInput.collectAsState().value,
                     onStop = { viewModel.stopRecording() },
                 )
 
@@ -294,7 +304,7 @@ private fun ReadyContent(
 }
 
 @Composable
-private fun RecordingContent(elapsedSecs: Int, onStop: () -> Unit) {
+private fun RecordingContent(elapsedSecs: Int, levelDb: Float, silentInput: Boolean, onStop: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -305,11 +315,61 @@ private fun RecordingContent(elapsedSecs: Int, onStop: () -> Unit) {
             text = stringResource(R.string.status_recording, mins, secs),
             style = MaterialTheme.typography.headlineSmall,
         )
+        InputLevelMeter(levelDb = levelDb, warning = silentInput)
+        if (silentInput) SilentInputBanner()
         FloatingActionButton(
             onClick = onStop,
             containerColor = MaterialTheme.colorScheme.error,
         ) {
             Icon(Icons.Default.Stop, contentDescription = stringResource(R.string.cd_stop_recording))
+        }
+    }
+}
+
+@Composable
+private fun InputLevelMeter(levelDb: Float, warning: Boolean) {
+    val meterDescription = stringResource(R.string.cd_input_level_meter)
+    val label = if (levelDb <= InputLevel.FLOOR_DB) {
+        stringResource(R.string.label_input_level_silent)
+    } else {
+        stringResource(R.string.label_input_level_db, levelDb.roundToInt())
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        LinearProgressIndicator(
+            progress = { InputLevel.meterFraction(levelDb) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(12.dp)
+                .semantics { contentDescription = meterDescription },
+            color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun SilentInputBanner() {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null)
+            Text(
+                text = stringResource(R.string.warning_silent_input),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }

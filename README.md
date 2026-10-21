@@ -392,6 +392,8 @@ error.log  — WARNING and above
 - **Recover failed recordings** — if processing fails, the raw audio is kept in your library so you can generate the transcript & notes later
 - **Use Existing Recording** — import an external audio file and transcribe/summarize it
 - **Silenced-mic warning** — if the system mutes the mic mid-recording (e.g. an answered call), the audio is kept and you're warned instead of getting a silent transcript
+- **Live input level meter** — a bar with a dB readout on the recording screen shows what the microphone hears
+- **No-sound warning** — if the input stays quiet (below about -45 dB) for 30 seconds, a banner and the recording notification say so; it clears when sound returns and never stops the recording
 - **Do Not Disturb while recording** (optional) — silence notifications during capture
 - **Meetings browser** — browse and read past transcripts and notes; rename or delete meetings
 - **Audio playback** — play back recordings directly in the meeting detail view

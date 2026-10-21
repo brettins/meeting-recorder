@@ -9,15 +9,24 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.github.meetingrecorder.MainActivity
 import com.github.meetingrecorder.MeetingRecorderApp
 import com.github.meetingrecorder.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.io.File
 
 /** Lifecycle phase of the recorder, surfaced from the service to the UI via [RecordingService.status]. */
@@ -28,6 +37,8 @@ data class RecorderStatus(
     val outputPath: String? = null,
     // True if the OS silenced the mic at any point — the recording is likely empty of sound.
     val silenced: Boolean = false,
+    // True once the input has been quiet for the silence window; clears when sound returns.
+    val silentInput: Boolean = false,
 )
 
 /**
@@ -39,6 +50,8 @@ data class RecorderStatus(
 class RecordingService : Service() {
 
     private val audioRecorder by lazy { AudioRecorder(this) }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var levelJob: Job? = null
 
     // The interruption filter that was active before we engaged DND, so we can restore it on stop.
     private var savedInterruptionFilter: Int? = null
@@ -74,10 +87,11 @@ class RecordingService : Service() {
         try {
             val file = audioRecorder.start(File(dirPath), bitrate) {
                 // OS silenced the mic mid-recording — reflect it immediately in the shared status.
-                _status.value = _status.value.copy(silenced = true)
+                _status.update { it.copy(silenced = true) }
             }
             enableDndIfRequested()
             _status.value = RecorderStatus(RecordingPhase.RECORDING, file.absolutePath)
+            startLevelMonitor()
         } catch (e: Exception) {
             _status.value = RecorderStatus(RecordingPhase.FAILED)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -86,13 +100,16 @@ class RecordingService : Service() {
     }
 
     private fun handleStop() {
+        stopLevelMonitor()
         audioRecorder.stop()
         restoreDnd()
-        val current = _status.value
-        _status.value = current.copy(
-            phase = RecordingPhase.STOPPED,
-            silenced = current.silenced || audioRecorder.wasInterrupted,
-        )
+        _status.update {
+            it.copy(
+                phase = RecordingPhase.STOPPED,
+                silenced = it.silenced || audioRecorder.wasInterrupted,
+                silentInput = false,
+            )
+        }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -102,6 +119,8 @@ class RecordingService : Service() {
         // without an ACTION_STOP): finalize the recorder so the mic is released and the .m4a is
         // properly closed rather than left truncated, and never leave the user stuck in Do Not
         // Disturb. Both calls are idempotent, so a normal ACTION_STOP that already ran is a no-op.
+        stopLevelMonitor()
+        scope.cancel()
         audioRecorder.stop()
         restoreDnd()
         super.onDestroy()
@@ -131,6 +150,31 @@ class RecordingService : Service() {
         }
     }
 
+    private fun startLevelMonitor() {
+        levelJob?.cancel()
+        val detector = SilenceDetector(now = SystemClock::elapsedRealtime)
+        levelJob = scope.launch {
+            while (true) {
+                delay(LEVEL_POLL_MS)
+                val db = InputLevel.dbFromAmplitude(audioRecorder.maxAmplitude())
+                _level.value = db
+                val muted = _status.value.silenced
+                val warning = detector.update(db, muted)
+                if (warning != _status.value.silentInput) {
+                    _status.update { it.copy(silentInput = warning) }
+                    getSystemService(NotificationManager::class.java)
+                        .notify(NOTIF_ID, buildNotification(warning))
+                }
+            }
+        }
+    }
+
+    private fun stopLevelMonitor() {
+        levelJob?.cancel()
+        levelJob = null
+        _level.value = InputLevel.FLOOR_DB
+    }
+
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -140,7 +184,7 @@ class RecordingService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(silentInput: Boolean = false): Notification {
         val contentIntent = PendingIntent.getActivity(
             this,
             0,
@@ -151,7 +195,9 @@ class RecordingService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notif_recording_title))
-            .setContentText(getString(R.string.notif_recording_text))
+            .setContentText(
+                getString(if (silentInput) R.string.notif_silent_input_text else R.string.notif_recording_text),
+            )
             .setSmallIcon(R.drawable.ic_stat_mic)
             .setOngoing(true)
             .setContentIntent(contentIntent)
@@ -165,9 +211,13 @@ class RecordingService : Service() {
         private const val ACTION_STOP = "com.github.meetingrecorder.action.STOP"
         private const val EXTRA_DIR = "dir"
         private const val EXTRA_BITRATE = "bitrate"
+        private const val LEVEL_POLL_MS = 200L
 
         private val _status = MutableStateFlow(RecorderStatus())
         val status: StateFlow<RecorderStatus> = _status.asStateFlow()
+
+        private val _level = MutableStateFlow(InputLevel.FLOOR_DB)
+        val level: StateFlow<Float> = _level.asStateFlow()
 
         fun start(context: Context, dir: File, bitrate: Int) {
             _status.value = RecorderStatus(RecordingPhase.IDLE)

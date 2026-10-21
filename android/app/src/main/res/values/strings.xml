@@ -43,6 +43,11 @@
     <!-- Recording foreground service notification -->
     <string name="notif_channel_recording">Recording</string>
     <string name="notif_recording_title">Recording meeting</string>
+    <string name="notif_silent_input_text">No sound heard for 30 seconds. Check the microphone.</string>
+    <string name="warning_silent_input">No sound heard for 30 seconds. Check that the microphone is working and not covered. Recording continues.</string>
+    <string name="label_input_level_db">Input level: %1$d dB</string>
+    <string name="label_input_level_silent">Input level: silent</string>
+    <string name="cd_input_level_meter">Input level meter</string>
     <string name="notif_recording_text">Tap to return to Meeting Recorder</string>
 
     <!-- Meetings Screen -->
