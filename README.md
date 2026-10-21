@@ -130,6 +130,12 @@ button.
 > three first-install steps that need root. Settings → General → Updates does exactly that from
 > inside the app, then offers to restart. A package install is owned by your package manager and
 > shows that instead of an Update button.
+>
+> **Automatic updates.** A user-local install whose source folder is a clone on `main` with no local
+> changes also updates itself: the daemon checks `origin/main` at start and every
+> `auto_update_hours` (default 6), fast-forwards the clone, re-runs `install.sh --skip-deps`, and
+> restarts once nothing is recording or processing. Set `auto_update_enabled` to `false` in the
+> config to turn it off.
 
 #### Option 1: native package (recommended)
 

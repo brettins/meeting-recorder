@@ -159,3 +159,20 @@ class TestRunUpdate:
         ok, message = run_update(SOURCE, run)
         assert ok is False
         assert "Could not run the installer" in message
+
+
+class TestUpdateLock:
+    def test_a_second_update_is_refused_while_one_runs(self, tmp_path):
+        import fcntl
+
+        held = open(tmp_path / "update.lock", "w")
+        fcntl.flock(held, fcntl.LOCK_EX)
+        ran = []
+        ok, message = run_update(SOURCE, lambda c: ran.append(c) or _result(), lock_dir=tmp_path)
+        held.close()
+        assert ok is False and "already running" in message
+        assert ran == []
+
+    def test_the_lock_is_released_after_an_update(self, tmp_path):
+        assert run_update(SOURCE, lambda _c: _result(), lock_dir=tmp_path)[0] is True
+        assert run_update(SOURCE, lambda _c: _result(), lock_dir=tmp_path)[0] is True

@@ -26,6 +26,12 @@ class CallPrompt:
         self._pending = False
         self._lock = threading.Lock()
 
+    @property
+    def pending(self) -> bool:
+        """Whether a "Record this meeting?" prompt is on screen."""
+        with self._lock:
+            return self._pending
+
     def on_call_detected(self, source: str) -> None:
         if self._engine.state != State.IDLE:
             logger.debug("Call detected but engine already active — not asking")

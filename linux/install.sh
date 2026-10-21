@@ -115,7 +115,13 @@ fi
 # ── 6. Copy source ───────────────────────────────────────────────────────────
 info "Copying application source…"
 mkdir -p "$INSTALL_DIR/linux"
-cp -r "$SCRIPT_DIR/src" "$INSTALL_DIR/linux/"
+# Copied beside the live tree and swapped in by rename, so a running app never
+# sees a half-written source tree and modules removed upstream do not linger.
+rm -rf "$INSTALL_DIR/linux/src.new" "$INSTALL_DIR/linux/src.old"
+cp -r "$SCRIPT_DIR/src" "$INSTALL_DIR/linux/src.new"
+[[ -d "$INSTALL_DIR/linux/src" ]] && mv "$INSTALL_DIR/linux/src" "$INSTALL_DIR/linux/src.old"
+mv "$INSTALL_DIR/linux/src.new" "$INSTALL_DIR/linux/src"
+rm -rf "$INSTALL_DIR/linux/src.old"
 
 # ── 7. System log directory ──────────────────────────────────────────────────
 # Optional: logging_setup falls back to ~/.local/share/meeting-recorder when

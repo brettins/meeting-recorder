@@ -109,6 +109,10 @@ class Engine:
     def state(self) -> State:
         return self._controller.state
 
+    def has_pending_input(self) -> bool:
+        """A title or tags typed for the next recording, which a restart would lose."""
+        return bool(self._pending_title or self._pending_tags)
+
     def state_name(self) -> str:
         return _STATE_NAMES.get(self._controller.state, "idle")
 
