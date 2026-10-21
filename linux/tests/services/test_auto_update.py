@@ -91,6 +91,13 @@ class TestCheckAndApply:
         assert check_and_apply(SOURCE, git).updated is False
         assert not git.ran("install")
 
+    def test_a_git_timeout_is_not_fatal(self):
+        def slow(_command):
+            raise subprocess.TimeoutExpired("git", 120)
+
+        outcome = check_and_apply(SOURCE, slow)
+        assert outcome.updated is False and "git unavailable" in outcome.message
+
     def test_git_missing_is_not_fatal(self):
         def boom(_command):
             raise FileNotFoundError("git")

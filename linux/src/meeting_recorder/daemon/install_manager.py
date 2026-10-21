@@ -54,6 +54,9 @@ class InstallManager:
         logger.info("Started install %s", key)
         return key
 
+    def busy(self) -> bool:
+        return bool(self._running)
+
     def running_json(self) -> str:
         """JSON list of currently-running installs (key + last status)."""
         return json.dumps([{"key": k, "status": v["status"]} for k, v in self._running.items()])

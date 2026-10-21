@@ -19,7 +19,7 @@ from ..core import commands
 from ..core.task_runner import TaskRunner
 from ..utils.autostart import migrate_autostart_entry, update_autostart, wants_autostart
 from ..utils.logging_setup import setup_logging
-from .auto_updater import AutoUpdater
+from .auto_updater import AutoUpdater, is_idle
 from .dbus_service import EngineService
 from .engine import Engine
 from .install_manager import InstallManager
@@ -89,7 +89,7 @@ class Daemon:
         return 0
 
     def _engine_idle(self) -> bool:
-        return self._engine.state_name() == "idle" and not self._engine.processing_jobs()
+        return is_idle(self._engine, self._runner, self._call_prompt, self._install_manager)
 
     def restart(self) -> None:
         """Quit, then re-exec the launcher so the new code runs."""
@@ -103,7 +103,10 @@ class Daemon:
             logger.warning("Launcher %s missing; not restarting", launcher)
             return
         logger.info("Re-executing %s --daemon", launcher)
-        os.execv(launcher, [launcher, "--daemon"])
+        try:
+            os.execv(launcher, [launcher, "--daemon"])
+        except OSError as exc:
+            logger.error("Could not restart the daemon: %s", exc)
 
     def quit(self) -> None:
         logger.info("Daemon shutting down")

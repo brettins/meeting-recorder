@@ -20,9 +20,11 @@ take injectable runners.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
+import signal
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -154,6 +156,24 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
 
 
+def _run_group(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run *command* in its own session and kill the whole group if it times out."""
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        out, err = proc.communicate(timeout=600)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        raise
+    return subprocess.CompletedProcess(command, proc.returncode, out, err)
+
+
 def checkout_revision(repo: str, run_fn: RunFn = _run) -> str:
     """``git describe`` of the checkout, or ``unknown`` when it cannot be read."""
     try:
@@ -166,17 +186,31 @@ def checkout_revision(repo: str, run_fn: RunFn = _run) -> str:
     return (result.stdout or "").strip() or UNKNOWN_REVISION
 
 
-def run_update(source: InstallSource, run_fn: RunFn = _run) -> tuple[bool, str]:
+def run_update(
+    source: InstallSource, run_fn: RunFn = _run_group, lock_dir: Path | None = None
+) -> tuple[bool, str]:
     """Re-run the install script for this install. Returns (ok, message).
 
-    No elevation: ``--skip-deps`` confines the script to ``$HOME``.
+    No elevation: ``--skip-deps`` confines the script to ``$HOME``. One update
+    runs at a time per install, whether it comes from the app or the daemon.
     """
     command = ["bash", source.script, "--skip-deps"]
     logger.info("Updating from %s: %s", source.repo, " ".join(command))
+    lock_path = (lock_dir or install_dir()) / "update.lock"
     try:
-        result = run_fn(command)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"Could not run the installer: {exc}"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = open(lock_path, "w")  # noqa: SIM115 - held until the update ends
+    except OSError as exc:
+        return False, f"Could not take the update lock: {exc}"
+    with lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False, "Another update is already running."
+        try:
+            result = run_fn(command)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return False, f"Could not run the installer: {exc}"
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip().splitlines()
         tail = detail[-1] if detail else f"exit status {result.returncode}"
