@@ -9,6 +9,7 @@ window is spawned on demand as a child (see ``dbus_service.EngineService``).
 from __future__ import annotations
 
 import logging
+import os
 import signal
 
 from gi.repository import GLib
@@ -18,6 +19,7 @@ from ..core import commands
 from ..core.task_runner import TaskRunner
 from ..utils.autostart import migrate_autostart_entry, update_autostart, wants_autostart
 from ..utils.logging_setup import setup_logging
+from .auto_updater import AutoUpdater
 from .dbus_service import EngineService
 from .engine import Engine
 from .install_manager import InstallManager
@@ -32,6 +34,7 @@ class Daemon:
         self._tray = None
         self._call_detector = None
         self._call_prompt = None
+        self._restart_requested = False
 
         self._engine = Engine(
             self._runner,
@@ -43,6 +46,7 @@ class Daemon:
             on_progress=self._on_install_progress,
             on_finished=self._on_install_finished,
         )
+        self._auto_updater = AutoUpdater(self._engine_idle, self.restart)
         self._service = EngineService(
             self._engine,
             on_quit=self.quit,
@@ -76,9 +80,30 @@ class Daemon:
         for sig in (signal.SIGINT, signal.SIGTERM):
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, int(sig), self._on_signal)
 
+        self._auto_updater.start()
+
         logger.info("Daemon started")
         self._loop.run()
+        if self._restart_requested:
+            self._exec_new_daemon()
         return 0
+
+    def _engine_idle(self) -> bool:
+        return self._engine.state_name() == "idle" and not self._engine.processing_jobs()
+
+    def restart(self) -> None:
+        """Quit, then re-exec the launcher so the new code runs."""
+        self._restart_requested = True
+        self.quit()
+
+    @staticmethod
+    def _exec_new_daemon() -> None:
+        launcher = os.path.expanduser("~/.local/bin/meeting-recorder")
+        if not os.path.exists(launcher):
+            logger.warning("Launcher %s missing; not restarting", launcher)
+            return
+        logger.info("Re-executing %s --daemon", launcher)
+        os.execv(launcher, [launcher, "--daemon"])
 
     def quit(self) -> None:
         logger.info("Daemon shutting down")

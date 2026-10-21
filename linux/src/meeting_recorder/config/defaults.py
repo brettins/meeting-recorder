@@ -121,6 +121,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "call_detection_enabled": True,
     "start_at_startup": True,
     "auto_title": True,
+    # User-local installs pull main and reinstall every N hours, restarting when idle.
+    "auto_update_enabled": True,
+    "auto_update_hours": 6,
     # Maestro item that receives each finished meeting's notes as a comment. "" = off.
     "maestro_notes_key": "",
     "processing_countdown_enabled": False,
