@@ -2,6 +2,10 @@
 
 from types import SimpleNamespace
 
+import pytest
+
+pytest.importorskip("gi")
+
 from meeting_recorder.core.state_machine import State
 from meeting_recorder.daemon import auto_updater
 from meeting_recorder.daemon.auto_updater import AutoUpdater, is_idle
