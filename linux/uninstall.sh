@@ -14,9 +14,9 @@ info() { echo -e "${GREEN}[info]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 
 # ── 1. Kill running instance ──────────────────────────────────────────────────
-if pgrep -f '^meeting-recorder(-daemon|-window|-process|-install)?$' > /dev/null 2>&1; then
+if pgrep -u "$(id -u)" -f '^meeting-recorder(-daemon|-window|-process|-install)?$' > /dev/null 2>&1; then
     info "Stopping running instance…"
-    pkill -f '^meeting-recorder(-daemon|-window|-process|-install)?$' || true
+    pkill -u "$(id -u)" -f '^meeting-recorder(-daemon|-window|-process|-install)?$' || true
     sleep 1
 fi
 
