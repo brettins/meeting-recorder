@@ -84,11 +84,17 @@ fun SettingsScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.tab_prompts)) },
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text(stringResource(R.string.tab_notion)) },
+                )
             }
 
             when (selectedTab) {
                 0 -> GeneralTab(viewModel)
                 1 -> PromptsTab(viewModel)
+                2 -> NotionTab(viewModel)
             }
         }
     }

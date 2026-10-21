@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,7 @@ fun MeetingDetailScreen(
     val processing = genState is GenState.Processing
     var selectedTab by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var showNotionDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -69,6 +71,14 @@ fun MeetingDetailScreen(
                     }
                 },
                 actions = {
+                    if ((currentNotes != null || currentTranscript != null) && !processing) {
+                        IconButton(onClick = { showNotionDialog = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(R.string.action_file_into_notion),
+                            )
+                        }
+                    }
                     // Regenerate is offered for notes only, and only once notes exist.
                     if (selectedTab == 0 && currentNotes != null && !processing) {
                         IconButton(onClick = { menuExpanded = true }) {
@@ -88,6 +98,9 @@ fun MeetingDetailScreen(
             )
         },
     ) { padding ->
+        if (showNotionDialog) {
+            NotionFilingDialog(meetingPath = meetingPath, onDismiss = { showNotionDialog = false })
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(

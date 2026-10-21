@@ -130,7 +130,26 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
     }
 
     override fun saveMeetingMeta(dir: File, title: String?, durationSeconds: Int?) {
-        File(dir, "meeting.json").writeText(MeetingMeta(title, durationSeconds).toJson())
+        val metaFile = File(dir, "meeting.json")
+        val merged = readMetaTree(metaFile).toMutableMap()
+        if (title != null) merged["title"] = JsonPrimitive(title) else merged.remove("title")
+        if (durationSeconds != null) merged["duration_seconds"] = JsonPrimitive(durationSeconds) else merged.remove("duration_seconds")
+        metaFile.writeText(JsonObject(merged).toString())
+    }
+
+    /** Records that a meeting was filed to a Notion page in meeting.json, keeping every other key. */
+    fun recordNotionFiling(dir: File, filing: NotionFilingMarker) {
+        val metaFile = File(dir, "meeting.json")
+        metaFile.writeText(NotionFilingMarker.apply(readMetaTree(metaFile), filing).toString())
+    }
+
+    private fun readMetaTree(metaFile: File): Map<String, JsonElement> {
+        if (!metaFile.exists()) return emptyMap()
+        return try {
+            lenientJson.parseToJsonElement(metaFile.readText()).jsonObject
+        } catch (_: Exception) {
+            emptyMap()
+        }
     }
 
     /**
