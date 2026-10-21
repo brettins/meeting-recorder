@@ -131,6 +131,11 @@ class Pipeline:
         if self._config.get("auto_title", True):
             self._auto_title(notes)
 
+        if self._notes_path:
+            from .maestro_notes import post_notes
+
+            post_notes(self._notes_path.parent, self._config)
+
     @property
     def output_paths(self) -> tuple[Path | None, Path | None, Path | None]:
         """Return (audio_path, transcript_path, notes_path) after run() completes."""

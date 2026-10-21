@@ -121,6 +121,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "call_detection_enabled": True,
     "start_at_startup": True,
     "auto_title": True,
+    # Maestro item that receives each finished meeting's notes as a comment. "" = off.
+    "maestro_notes_key": "",
     "processing_countdown_enabled": False,
     # Auto-stop guards. See core/auto_stop.py: the cap stops outright, silence
     # escalates through a nudge and a warning first. 0 disables either.
