@@ -75,8 +75,8 @@ gtk-update-icon-cache -f -t %{_datadir}/icons/hicolor 2>/dev/null || true
 %preun
 # $1 == 0 means full uninstall (not upgrade)
 if [ "$1" -eq 0 ]; then
-    if pgrep -f "meeting_recorder" >/dev/null 2>&1; then
-        pkill -f "meeting_recorder" || true
+    if pgrep -f '^meeting-recorder(-daemon|-window|-process|-install)?$' >/dev/null 2>&1; then
+        pkill -f '^meeting-recorder(-daemon|-window|-process|-install)?$' || true
         sleep 1
     fi
 fi
