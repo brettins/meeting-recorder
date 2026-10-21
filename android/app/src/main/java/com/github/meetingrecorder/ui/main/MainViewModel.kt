@@ -60,6 +60,10 @@ class MainViewModel(
         .map { it.silentInput }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    val micMuted: StateFlow<Boolean> = RecordingService.status
+        .map { it.silenced || it.muted }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
     private var pendingAudioFile: File? = null

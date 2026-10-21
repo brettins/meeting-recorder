@@ -31,7 +31,7 @@ class AudioRecorder(private val context: Context) {
     // has muted our capture (the exact case that produces a non-empty but silent recording).
     private val recordingCallback = object : AudioManager.AudioRecordingCallback() {
         override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
-            val silencedNow = configs?.any { it.isClientSilenced } == true
+            val silencedNow = recorder?.activeRecordingConfiguration?.isClientSilenced == true
             clientSilenced = silencedNow
             if (silencedNow) markInterrupted()
         }

@@ -39,6 +39,8 @@ data class RecorderStatus(
     val silenced: Boolean = false,
     // True once the input has been quiet for the silence window; clears when sound returns.
     val silentInput: Boolean = false,
+    // True while the system currently has our mic muted.
+    val muted: Boolean = false,
 )
 
 /**
@@ -108,6 +110,7 @@ class RecordingService : Service() {
                 phase = RecordingPhase.STOPPED,
                 silenced = it.silenced || audioRecorder.wasInterrupted,
                 silentInput = false,
+                muted = false,
             )
         }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -120,6 +123,7 @@ class RecordingService : Service() {
         // properly closed rather than left truncated, and never leave the user stuck in Do Not
         // Disturb. Both calls are idempotent, so a normal ACTION_STOP that already ran is a no-op.
         stopLevelMonitor()
+        _status.update { it.copy(silentInput = false, muted = false) }
         scope.cancel()
         audioRecorder.stop()
         restoreDnd()
@@ -158,11 +162,14 @@ class RecordingService : Service() {
                 delay(LEVEL_POLL_MS)
                 val db = InputLevel.dbFromAmplitude(audioRecorder.maxAmplitude())
                 _level.value = db
-                val warning = detector.update(db, audioRecorder.clientSilenced)
+                val muted = audioRecorder.clientSilenced
+                if (muted != _status.value.muted) _status.update { it.copy(muted = muted) }
+                val warning = detector.update(db, muted)
                 if (warning != _status.value.silentInput) {
                     _status.update { it.copy(silentInput = warning) }
-                    getSystemService(NotificationManager::class.java)
-                        .notify(NOTIF_ID, buildNotification(warning))
+                    val nm = getSystemService(NotificationManager::class.java)
+                    nm.notify(NOTIF_ID, buildNotification(warning))
+                    if (warning) nm.notify(ALERT_NOTIF_ID, buildAlertNotification()) else nm.cancel(ALERT_NOTIF_ID)
                 }
             }
         }
@@ -172,6 +179,7 @@ class RecordingService : Service() {
         levelJob?.cancel()
         levelJob = null
         _level.value = InputLevel.FLOOR_DB
+        getSystemService(NotificationManager::class.java).cancel(ALERT_NOTIF_ID)
     }
 
     private fun createChannel() {
@@ -180,8 +188,40 @@ class RecordingService : Service() {
             getString(R.string.notif_channel_recording),
             NotificationManager.IMPORTANCE_LOW,
         )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val alertChannel = NotificationChannel(
+            ALERT_CHANNEL_ID,
+            getString(R.string.notif_channel_alerts),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        )
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(channel)
+        nm.createNotificationChannel(alertChannel)
     }
+
+    private fun silenceWindowText(): String = resources.getQuantityString(
+        R.plurals.notif_silent_input_text,
+        SilenceDetector.DEFAULT_WINDOW_SECS,
+        SilenceDetector.DEFAULT_WINDOW_SECS,
+    )
+
+    private fun buildAlertNotification(): Notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+        .setContentTitle(getString(R.string.notif_silent_input_title))
+        .setContentText(silenceWindowText())
+        .setSmallIcon(R.drawable.ic_stat_mic)
+        .setCategory(NotificationCompat.CATEGORY_STATUS)
+        .setOnlyAlertOnce(true)
+        .setAutoCancel(true)
+        .setContentIntent(contentPendingIntent())
+        .build()
+
+    private fun contentPendingIntent(): PendingIntent = PendingIntent.getActivity(
+        this,
+        0,
+        Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        },
+        PendingIntent.FLAG_IMMUTABLE,
+    )
 
     private fun buildNotification(silentInput: Boolean = false): Notification {
         val contentIntent = PendingIntent.getActivity(
@@ -196,7 +236,7 @@ class RecordingService : Service() {
             .setContentTitle(getString(R.string.notif_recording_title))
             .setContentText(
                 if (silentInput) {
-                    getString(R.string.notif_silent_input_text, SilenceDetector.DEFAULT_WINDOW_SECS)
+                    silenceWindowText()
                 } else {
                     getString(R.string.notif_recording_text)
                 },
@@ -210,6 +250,8 @@ class RecordingService : Service() {
     companion object {
         private const val CHANNEL_ID = "recording"
         private const val NOTIF_ID = 1001
+        private const val ALERT_CHANNEL_ID = "recording_alerts"
+        private const val ALERT_NOTIF_ID = 1002
         private const val ACTION_START = "com.github.meetingrecorder.action.START"
         private const val ACTION_STOP = "com.github.meetingrecorder.action.STOP"
         private const val EXTRA_DIR = "dir"

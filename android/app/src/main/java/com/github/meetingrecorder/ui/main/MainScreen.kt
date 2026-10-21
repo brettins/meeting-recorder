@@ -54,7 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -238,6 +240,7 @@ fun MainScreen(
                     elapsedSecs = s.elapsedSecs,
                     levelDb = viewModel.inputLevelDb,
                     silentInput = viewModel.silentInput,
+                    micMuted = viewModel.micMuted,
                     onStop = { viewModel.stopRecording() },
                 )
 
@@ -311,9 +314,11 @@ private fun RecordingContent(
     elapsedSecs: Int,
     levelDb: StateFlow<Float>,
     silentInput: StateFlow<Boolean>,
+    micMuted: StateFlow<Boolean>,
     onStop: () -> Unit,
 ) {
     val silent by silentInput.collectAsStateWithLifecycle()
+    val muted by micMuted.collectAsStateWithLifecycle()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -325,7 +330,11 @@ private fun RecordingContent(
             style = MaterialTheme.typography.headlineSmall,
         )
         InputLevelMeter(levelFlow = levelDb, warning = silent)
-        if (silent) SilentInputBanner()
+        if (muted) WarningBanner(stringResource(R.string.warning_mic_muted))
+        if (silent) {
+            val secs = SilenceDetector.DEFAULT_WINDOW_SECS
+            WarningBanner(LocalContext.current.resources.getQuantityString(R.plurals.warning_silent_input, secs, secs))
+        }
         FloatingActionButton(
             onClick = onStop,
             containerColor = MaterialTheme.colorScheme.error,
@@ -363,9 +372,12 @@ private fun InputLevelMeter(levelFlow: StateFlow<Float>, warning: Boolean) {
 }
 
 @Composable
-private fun SilentInputBanner() {
+private fun WarningBanner(message: String) {
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
         shape = MaterialTheme.shapes.medium,
@@ -377,7 +389,7 @@ private fun SilentInputBanner() {
         ) {
             Icon(Icons.Default.Warning, contentDescription = null)
             Text(
-                text = stringResource(R.string.warning_silent_input, SilenceDetector.DEFAULT_WINDOW_SECS),
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
