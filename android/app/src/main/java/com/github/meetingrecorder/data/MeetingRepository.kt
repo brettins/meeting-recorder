@@ -1,13 +1,13 @@
 package com.github.meetingrecorder.data
 
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.time.LocalDateTime
 
-class MeetingRepository(private val rootDir: File) : MeetingStore {
+class MeetingRepository(
+    private val rootDir: File,
+    private val logWarn: (String) -> Unit = {},
+) : MeetingStore {
 
     // Captured when the repository (a per-process singleton) is constructed — effectively app launch.
     // recoverOrphanedRecordings() only acts on directories locked *before* this moment, so a recording
@@ -124,13 +124,29 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
             "${datePart}_$timePart"
         }
 
-        val dir = File(rootDir, folderName)
+        // Two recordings started in the same minute with the same title must not
+        // share a folder: the second would write over the first one's audio.
+        var dir = File(rootDir, folderName)
+        var n = 2
+        while (dir.exists() && !dir.listFiles().isNullOrEmpty()) {
+            dir = File(rootDir, "${folderName}_$n")
+            n++
+        }
         dir.mkdirs()
         return dir
     }
 
     override fun saveMeetingMeta(dir: File, title: String?, durationSeconds: Int?) {
-        File(dir, "meeting.json").writeText(MeetingMeta(title, durationSeconds).toJson())
+        keptOrSaid(
+            dir,
+            updateMeetingJson(
+                dir,
+                mapOf(
+                    "title" to title?.let { JsonPrimitive(it) },
+                    "duration_seconds" to durationSeconds?.let { JsonPrimitive(it) },
+                ),
+            ),
+        )
     }
 
     /**
@@ -149,22 +165,8 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
             dir.renameTo(newDir)
         }
 
-        // Update meeting.json — preserve any existing fields (e.g. duration_seconds, or keys
-        // written by the Linux app), which is why this edits the raw JSON tree, not MeetingMeta.
-        val metaFile = File(newDir, "meeting.json")
-        val existing: Map<String, JsonElement> = if (metaFile.exists()) {
-            try {
-                lenientJson.parseToJsonElement(metaFile.readText()).jsonObject
-            } catch (_: Exception) {
-                emptyMap()
-            }
-        } else {
-            emptyMap()
-        }
-        val updated = JsonObject(
-            if (cleanTitle != null) existing + ("title" to JsonPrimitive(cleanTitle)) else existing - "title",
-        )
-        metaFile.writeText(updated.toString())
+        // Edits the raw JSON tree, not MeetingMeta, so duration_seconds and Linux-written keys survive.
+        keptOrSaid(newDir, updateMeetingJson(newDir, mapOf("title" to cleanTitle?.let { JsonPrimitive(it) })))
 
         return newDir
     }
@@ -188,5 +190,9 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun keptOrSaid(dir: File, written: Boolean) {
+        if (!written) logWarn("meeting.json in ${dir.name} could not be read, so it was left as it was")
     }
 }

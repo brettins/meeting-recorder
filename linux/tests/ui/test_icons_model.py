@@ -1,6 +1,11 @@
 """Tests for cross-theme icon selection."""
 
-from meeting_recorder.ui.icons_model import TAG_ICONS, TAG_LIST_ICONS, pick_icon_name
+from meeting_recorder.ui.icons_model import (
+    MAESTRO_ICONS,
+    TAG_ICONS,
+    TAG_LIST_ICONS,
+    pick_icon_name,
+)
 
 
 def theme_with(*available):
@@ -37,4 +42,11 @@ class TestTagIconCandidates:
     def test_tag_list_prefers_view_list(self):
         assert pick_icon_name(TAG_LIST_ICONS, theme_with("view-list-symbolic")) == (
             "view-list-symbolic"
+        )
+
+
+class TestMaestroIconCandidates:
+    def test_it_takes_the_first_the_theme_has(self):
+        assert pick_icon_name(MAESTRO_ICONS, theme_with("document-send-symbolic")) == (
+            "document-send-symbolic"
         )

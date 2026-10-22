@@ -2,15 +2,19 @@ package com.github.meetingrecorder.ui.detail
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -18,22 +22,28 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -58,8 +68,30 @@ fun MeetingDetailScreen(
     val processing = genState is GenState.Processing
     var selectedTab by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
+    val filingDialog by viewModel.filingDialog.collectAsState()
+    val filedNotice by viewModel.filedNotice.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    // Regenerate is offered for notes only, and only once notes exist.
+    val canRegenerate = selectedTab == 0 && currentNotes != null
+    val canFile = currentNotes != null || currentTranscript != null
+
+    LaunchedEffect(filedNotice) {
+        filedNotice?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.consumeFiledNotice()
+        }
+    }
+
+    filingDialog?.let { dialog ->
+        FilingDialogView(
+            dialog = dialog,
+            onFile = viewModel::fileIntoMaestro,
+            onDismiss = viewModel::dismissFiling,
+        )
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.title_meeting_detail)) },
@@ -69,19 +101,29 @@ fun MeetingDetailScreen(
                     }
                 },
                 actions = {
-                    // Regenerate is offered for notes only, and only once notes exist.
-                    if (selectedTab == 0 && currentNotes != null && !processing) {
+                    if ((canRegenerate || canFile) && !processing) {
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_options))
                         }
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_regenerate_notes)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.regenerateNotes()
-                                },
-                            )
+                            if (canRegenerate) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_regenerate_notes)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.regenerateNotes()
+                                    },
+                                )
+                            }
+                            if (canFile) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_file_into_maestro)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.openFiling()
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -184,6 +226,85 @@ private fun TranscriptTabBody(
             }
         }
     }
+}
+
+@Composable
+private fun FilingDialogView(
+    dialog: FilingDialog,
+    onFile: (List<String>, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val ticked = remember(dialog.actions) { mutableStateListOf(*dialog.actions.map { true }.toTypedArray()) }
+    var company by remember(dialog.meetingName) { mutableStateOf(dialog.company) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.title_file_into_maestro)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(dialog.meetingName, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(R.string.desc_file_again),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = company,
+                    onValueChange = { company = it },
+                    label = { Text(stringResource(R.string.label_maestro_company)) },
+                    enabled = !dialog.busy,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(stringResource(R.string.label_draft_tasks), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(if (dialog.actions.isEmpty()) R.string.desc_no_draft_tasks else R.string.desc_draft_tasks),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                dialog.actions.forEachIndexed { index, line ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = ticked[index],
+                                enabled = !dialog.busy,
+                                role = Role.Checkbox,
+                                onValueChange = { ticked[index] = it },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = ticked[index], onCheckedChange = null, enabled = !dialog.busy)
+                        Text(line, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                when {
+                    dialog.busy -> Text(stringResource(R.string.status_filing), style = MaterialTheme.typography.bodySmall)
+                    dialog.error != null -> Text(
+                        dialog.error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !dialog.busy,
+                onClick = { onFile(dialog.actions.filterIndexed { i, _ -> ticked[i] }, company) },
+            ) {
+                Text(stringResource(R.string.action_file))
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !dialog.busy, onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
 }
 
 @Composable

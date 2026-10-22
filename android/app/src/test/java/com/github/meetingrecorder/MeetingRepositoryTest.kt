@@ -113,6 +113,19 @@ class MeetingRepositoryTest {
     }
 
     @Test
+    fun `saveMeetingMeta keeps keys it does not own`() {
+        val dir = tempDir.newFolder("2024-01-15_14-30")
+        File(dir, "meeting.json").writeText("""{"title":"Old","tags":["sing"],"dispatch_meeting_id":"2024-01-15T14:30"}""")
+        repo().saveMeetingMeta(dir, "New", 60)
+
+        val json = JSONObject(File(dir, "meeting.json").readText())
+        assertEquals("New", json.getString("title"))
+        assertEquals(60, json.getInt("duration_seconds"))
+        assertEquals("sing", json.getJSONArray("tags").getString(0))
+        assertEquals("2024-01-15T14:30", json.getString("dispatch_meeting_id"))
+    }
+
+    @Test
     fun `saveMeetingMeta omits keys when values are null`() {
         val dir = tempDir.newFolder("meeting2")
         repo().saveMeetingMeta(dir, null, null)
@@ -380,5 +393,38 @@ class MeetingRepositoryTest {
     fun `recoverOrphanedRecordings no-ops when root does not exist`() {
         val repo = MeetingRepository(File(tempDir.root, "nonexistent"))
         repo.recoverOrphanedRecordings() // must not throw
+    }
+
+    @Test
+    fun `a second recording in the same minute gets its own folder`() {
+        val first = repo().createMeetingDir("Standup")
+        File(first, "recording.m4a").writeText("first")
+        val second = repo().createMeetingDir("Standup")
+        assertTrue(second.name != first.name)
+        assertEquals("first", File(first, "recording.m4a").readText())
+    }
+
+    @Test
+    fun `a meeting_json that cannot be read is left alone rather than replaced`() {
+        val dir = repo().createMeetingDir("Standup")
+        val broken = "{\"title\": \"Standup\", \"tags\": [\"sing\""
+        File(dir, "meeting.json").writeText(broken)
+        repo().saveMeetingMeta(dir, "Standup", 60)
+        assertEquals(broken, File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `a meeting_json holding an array is left alone too`() {
+        val dir = repo().createMeetingDir("Standup")
+        File(dir, "meeting.json").writeText("[1, 2]")
+        repo().saveMeetingMeta(dir, "Standup", 60)
+        assertEquals("[1, 2]", File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `a write leaves no temporary file behind`() {
+        val dir = repo().createMeetingDir("Standup")
+        repo().saveMeetingMeta(dir, "Standup", 60)
+        assertFalse(File(dir, "meeting.json.tmp").exists())
     }
 }
