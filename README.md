@@ -398,6 +398,7 @@ error.log  — WARNING and above
 - **Do Not Disturb while recording** (optional) — silence notifications during capture
 - **Meetings browser** — browse and read past transcripts and notes; rename or delete meetings
 - **Audio playback** — play back recordings directly in the meeting detail view
+- **File into Notion** — file a meeting's notes, transcript and recording to a Notion page from the meeting screen. Add workspaces under **Settings → Notion**; tokens are stored in EncryptedSharedPreferences. Recordings over 5 MiB need a paid Notion workspace. Over 20 MiB they are not attached. The notes are filed either way. Each filing is recorded in `meeting.json` under `notion_filings`.
 - Recordings saved to `Documents/Meetings/` — same structure as the Linux app
 
 ### Requirements

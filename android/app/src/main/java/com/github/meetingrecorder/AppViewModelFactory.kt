@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.meetingrecorder.ui.detail.MeetingDetailViewModel
+import com.github.meetingrecorder.ui.detail.NotionFilingViewModel
 import com.github.meetingrecorder.ui.main.MainViewModel
 import com.github.meetingrecorder.ui.meetings.MeetingsViewModel
 import com.github.meetingrecorder.ui.settings.SettingsViewModel
@@ -33,6 +34,11 @@ val appViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         MeetingsViewModel(app, app.container.meetingRepository)
     }
     initializer {
-        SettingsViewModel(meetingRecorderApp.container.config)
+        val app = meetingRecorderApp
+        SettingsViewModel(app.container.config, app.container.notionTokenStore)
+    }
+    initializer {
+        val app = meetingRecorderApp
+        NotionFilingViewModel(app.container.config, app.container.notionTokenStore, app.container.meetingRepository)
     }
 }

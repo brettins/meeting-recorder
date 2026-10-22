@@ -1,6 +1,7 @@
 package com.github.meetingrecorder
 
 import com.github.meetingrecorder.data.MeetingRepository
+import com.github.meetingrecorder.data.NotionFilingMarker
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -251,6 +252,107 @@ class MeetingRepositoryTest {
         assertEquals(120, json.getInt("duration_seconds"))
         assertEquals("keep me", json.getString("linux_only_field"))
         assertTrue("Folder should carry new title: ${newDir.name}", newDir.name.endsWith("_New_Title"))
+    }
+
+    private fun marker(pageId: String = "page-1", notes: Boolean = true) = NotionFilingMarker(
+        workspace = "Work",
+        workspaceId = "work",
+        pageId = pageId,
+        pageUrl = "https://notion.so/$pageId",
+        filedAt = "2026-10-21T10:00:00Z",
+        notes = notes,
+        transcript = true,
+        audio = false,
+    )
+
+    @Test
+    fun `saveMeetingMeta preserves keys it does not own`() {
+        val dir = tempDir.newFolder("keep")
+        File(dir, "meeting.json").writeText("""{"title":"Old","linux_only_field":"keep me"}""")
+
+        repo().saveMeetingMeta(dir, "New", 90)
+
+        val json = JSONObject(File(dir, "meeting.json").readText())
+        assertEquals("New", json.getString("title"))
+        assertEquals(90, json.getInt("duration_seconds"))
+        assertEquals("keep me", json.getString("linux_only_field"))
+    }
+
+    @Test
+    fun `recordNotionFiling writes marker and preserves other keys`() {
+        val dir = tempDir.newFolder("filed")
+        File(dir, "meeting.json").writeText("""{"title":"T","duration_seconds":60,"linux_only_field":"keep me"}""")
+
+        repo().recordNotionFiling(dir, marker())
+
+        val json = JSONObject(File(dir, "meeting.json").readText())
+        assertEquals("T", json.getString("title"))
+        assertEquals("keep me", json.getString("linux_only_field"))
+        val entry = json.getJSONArray("notion_filings").getJSONObject(0)
+        assertEquals("Work", entry.getString("workspace"))
+        assertEquals("page-1", entry.getString("page_id"))
+        assertEquals("https://notion.so/page-1", entry.getString("page_url"))
+        assertEquals("2026-10-21T10:00:00Z", entry.getString("filed_at"))
+        assertTrue(entry.getBoolean("notes"))
+        assertFalse(entry.getBoolean("audio"))
+    }
+
+    @Test
+    fun `recordNotionFiling creates meeting_json when absent`() {
+        val dir = tempDir.newFolder("fresh")
+        repo().recordNotionFiling(dir, marker())
+        assertEquals(1, JSONObject(File(dir, "meeting.json").readText()).getJSONArray("notion_filings").length())
+    }
+
+    @Test
+    fun `recordNotionFiling replaces an earlier entry for the same page and keeps others`() {
+        val dir = tempDir.newFolder("refiled")
+        val repo = repo()
+        repo.recordNotionFiling(dir, marker("a", notes = false))
+        repo.recordNotionFiling(dir, marker("b"))
+        repo.recordNotionFiling(dir, marker("a", notes = true))
+
+        val list = JSONObject(File(dir, "meeting.json").readText()).getJSONArray("notion_filings")
+        assertEquals(2, list.length())
+        assertEquals("b", list.getJSONObject(0).getString("page_id"))
+        assertEquals("a", list.getJSONObject(1).getString("page_id"))
+        assertTrue(list.getJSONObject(1).getBoolean("notes"))
+    }
+
+    @Test
+    fun `recordNotionFiling refuses to touch an unreadable meeting_json`() {
+        val dir = tempDir.newFolder("broken")
+        File(dir, "meeting.json").writeText("{not json")
+        try {
+            repo().recordNotionFiling(dir, marker())
+            org.junit.Assert.fail("expected IOException")
+        } catch (_: java.io.IOException) {
+        }
+        assertEquals("{not json", File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `saveMeetingMeta leaves an unreadable meeting_json untouched`() {
+        val dir = tempDir.newFolder("broken2")
+        File(dir, "meeting.json").writeText("[1,2]")
+        repo().saveMeetingMeta(dir, "T", 1)
+        assertEquals("[1,2]", File(dir, "meeting.json").readText())
+    }
+
+    @Test
+    fun `no temp files are left behind after a write`() {
+        val dir = tempDir.newFolder("tidy")
+        repo().recordNotionFiling(dir, marker())
+        assertEquals(listOf("meeting.json"), dir.list()!!.toList())
+    }
+
+    @Test
+    fun `marker survives a later saveMeetingMeta`() {
+        val dir = tempDir.newFolder("regen")
+        val repo = repo()
+        repo.recordNotionFiling(dir, marker())
+        repo.saveMeetingMeta(dir, "Title", 10)
+        assertTrue(JSONObject(File(dir, "meeting.json").readText()).has("notion_filings"))
     }
 
     // -------------------------------------------------------------------------

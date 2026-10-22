@@ -2,6 +2,8 @@ package com.github.meetingrecorder.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.github.meetingrecorder.data.notion.NotionWorkspace
+import com.github.meetingrecorder.data.notion.NotionWorkspaces
 
 class Config(context: Context) {
 
@@ -57,6 +59,19 @@ class Config(context: Context) {
         get() = prefs.getBoolean("dnd_during_recording_enabled", false)
         set(value) {
             prefs.edit().putBoolean("dnd_during_recording_enabled", value).apply()
+        }
+
+    // JSON list of NotionWorkspace; tokens live in NotionTokenStore, never here.
+    var notionWorkspacesJson: String
+        get() = prefs.getString("notion_workspaces", "[]") ?: "[]"
+        set(value) {
+            prefs.edit().putString("notion_workspaces", value).apply()
+        }
+
+    var notionWorkspaces: List<NotionWorkspace>
+        get() = NotionWorkspaces.decode(notionWorkspacesJson)
+        set(value) {
+            notionWorkspacesJson = NotionWorkspaces.encode(value)
         }
 
     companion object {
