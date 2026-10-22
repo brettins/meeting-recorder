@@ -21,19 +21,26 @@ class AudioRecorder(private val context: Context) {
     var wasInterrupted: Boolean = false
         private set
 
+    @Volatile
+    var clientSilenced: Boolean = false
+        private set
+
     private var onInterrupted: (() -> Unit)? = null
 
     // Fires whenever the set of active recordings changes; isClientSilenced tells us the system
     // has muted our capture (the exact case that produces a non-empty but silent recording).
     private val recordingCallback = object : AudioManager.AudioRecordingCallback() {
         override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
-            if (configs?.any { it.isClientSilenced } == true) markInterrupted()
+            val silencedNow = recorder?.activeRecordingConfiguration?.isClientSilenced == true
+            clientSilenced = silencedNow
+            if (silencedNow) markInterrupted()
         }
     }
 
     fun start(outputDir: File, bitrate: Int = 64_000, onInterrupted: (() -> Unit)? = null): File {
         stop()
         wasInterrupted = false
+        clientSilenced = false
         this.onInterrupted = onInterrupted
         val file = File(outputDir, "recording.m4a")
         recorder = MediaRecorder(context).apply {
@@ -76,6 +83,12 @@ class AudioRecorder(private val context: Context) {
             wasInterrupted = true
             onInterrupted?.invoke()
         }
+    }
+
+    fun maxAmplitude(): Int = try {
+        recorder?.maxAmplitude ?: 0
+    } catch (_: RuntimeException) {
+        0
     }
 
     val isRecording: Boolean get() = recorder != null

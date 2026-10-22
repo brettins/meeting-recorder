@@ -20,9 +20,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -51,6 +54,15 @@ class MainViewModel(
 
     private val _state = MutableStateFlow<RecordingState>(RecordingState.Ready)
     val state: StateFlow<RecordingState> = _state.asStateFlow()
+
+    val inputLevelDb: StateFlow<Float> = RecordingService.level
+    val silentInput: StateFlow<Boolean> = RecordingService.status
+        .map { it.silentInput }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    val micMuted: StateFlow<Boolean> = RecordingService.status
+        .map { it.silenced || it.muted }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private var timerJob: Job? = null
     private var countdownJob: Job? = null

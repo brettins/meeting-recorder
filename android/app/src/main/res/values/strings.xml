@@ -39,10 +39,24 @@
     <string name="error_with_message">Error: %1$s</string>
     <string name="error_recording_silenced">The microphone was muted by the system during recording (likely an incoming call), so the audio may be silent. The recording was not transcribed. The audio file was kept so you can check it.</string>
     <string name="error_processing_failed_audio_kept">Transcription failed: %1$s\n\nThe audio was saved to your library. Open the recording and choose \'Use Existing Recording\' to try again.</string>
+    <string name="warning_mic_muted">Microphone muted by the system. Audio may be silent.</string>
+    <plurals name="warning_silent_input">
+        <item quantity="one">No sound heard for %1$d second. Check that the microphone is working and not covered. Recording continues.</item>
+        <item quantity="other">No sound heard for %1$d seconds. Check that the microphone is working and not covered. Recording continues.</item>
+    </plurals>
+    <string name="label_input_level_db">Input level: %1$d dB</string>
+    <string name="label_input_level_silent">Input level: silent</string>
+    <string name="cd_input_level_meter">Input level meter</string>
 
     <!-- Recording foreground service notification -->
     <string name="notif_channel_recording">Recording</string>
     <string name="notif_recording_title">Recording meeting</string>
+    <string name="notif_channel_alerts">Recording alerts</string>
+    <string name="notif_silent_input_title">Recording has no sound</string>
+    <plurals name="notif_silent_input_text">
+        <item quantity="one">No sound heard for %1$d second. Check the microphone.</item>
+        <item quantity="other">No sound heard for %1$d seconds. Check the microphone.</item>
+    </plurals>
     <string name="notif_recording_text">Tap to return to Meeting Recorder</string>
 
     <!-- Meetings Screen -->
