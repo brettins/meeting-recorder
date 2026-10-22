@@ -68,7 +68,7 @@ def error_message(status: int, body: bytes | str) -> str:
     except ValueError:
         detail = ""
     if status == 401:
-        return "Maestro refused this machine. Check that it is on the tailnet."
+        return "Maestro refused the request: it has to trust this machine first."
     if status == 404:
         return "Nothing at Maestro's address files meetings."
     return detail or f"Maestro returned HTTP {status}."

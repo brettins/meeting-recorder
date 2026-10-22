@@ -104,7 +104,7 @@ class TestFiling:
 
     def test_a_refusal_is_not_retried(self):
         client, opener = _client([_HTTPError(401, {"detail": "That token is wrong."}), REPLY])
-        with pytest.raises(MaestroError, match="tailnet"):
+        with pytest.raises(MaestroError, match="has to trust this machine"):
             client.file_meeting({})
         assert len(opener.requests) == 1
 
@@ -132,8 +132,8 @@ class TestFiling:
 
 
 class TestErrorMessage:
-    def test_401_points_at_the_tailnet(self):
-        assert "tailnet" in error_message(401, b"{}")
+    def test_401_says_maestro_must_trust_this_machine(self):
+        assert "has to trust this machine" in error_message(401, b"{}")
 
     def test_404_says_nothing_files_meetings_there(self):
         assert "files meetings" in error_message(404, b"")

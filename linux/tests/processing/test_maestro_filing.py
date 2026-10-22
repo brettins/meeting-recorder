@@ -200,3 +200,22 @@ class TestAStableMeetingId:
 
         file_meeting(Client(), meeting)
         assert read_metadata(path)[ID_KEY] == "2026-03-01T14:30"
+
+    def test_filing_leaves_the_notes_posted_marker_alone(self, tmp_path):
+        from datetime import datetime
+
+        from meeting_recorder.processing.maestro_notes import POSTED_KEY
+        from meeting_recorder.utils.meeting_scanner import read_metadata, write_metadata
+
+        path = self._folder(tmp_path, "2026-03-01_14-30")
+        write_metadata(path, {POSTED_KEY: "SNG-9"})
+        (path / "notes.md").write_text("Notes", encoding="utf-8")
+
+        class Client:
+            def file_meeting(self, payload):
+                return FiledMeeting(key="DSP-1", url="", created=True)
+
+        file_meeting(Client(), FakeMeeting(path, datetime(2026, 3, 1, 14, 30)))
+        meta = read_metadata(path)
+        assert meta[POSTED_KEY] == "SNG-9"
+        assert meta["dispatch_meeting_id"] == "2026-03-01T14:30"

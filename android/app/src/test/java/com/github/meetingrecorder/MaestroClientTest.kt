@@ -130,7 +130,7 @@ class MaestroClientTest {
         server.enqueue(json("""{"detail": "That token is wrong."}""", 401))
         server.enqueue(json(reply))
         val e = failure { client().fileMeeting(payload) }
-        assertTrue(e.message!!.contains("tailnet"))
+        assertTrue(e.message!!.contains("has to trust this phone"))
         assertEquals(401, e.statusCode)
         assertEquals(1, server.requestCount)
     }
@@ -163,8 +163,8 @@ class MaestroClientTest {
     }
 
     @Test
-    fun `401 points at the tailnet`() {
-        assertTrue(MaestroClient.errorMessage(401, "{}").contains("tailnet"))
+    fun `401 says Maestro must trust the phone first`() {
+        assertTrue(MaestroClient.errorMessage(401, "{}").contains("has to trust this phone"))
     }
 
     @Test

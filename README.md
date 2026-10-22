@@ -254,6 +254,14 @@ updates it rather than adding a second one, and never rewrites a task that is al
 audio is not sent. For development, `MAESTRO_URL` and `MAESTRO_API_TOKEN` override the address and
 add a token.
 
+Until Maestro trusts the tailnet for `/api/meetings`, it answers 401 and the window says "Maestro
+refused the request: it has to trust this machine first." Nothing else needs changing on this side.
+
+This is separate from the notes comment (`maestro_notes_key`, `processing/maestro_notes.py`), which
+posts notes to one ticket and records `maestro_posted` in `meeting.json`. Filing records
+`dispatch_meeting_id` instead, so the two never block or overwrite each other; a meeting that goes
+through both appears once as a comment on the ticket and once as its own meeting item.
+
 ### First-Time Setup
 
 Open **Settings** (gear icon → **Preferences**, or the tray menu). The gear icon also has an **About Meeting Recorder** entry showing the app version and project links.
@@ -467,7 +475,8 @@ set -x KEY_PASSWORD your_key_pass
 
 Open a meeting, choose **File into Maestro** from the three-dot menu, tick the action lines that
 should become draft tasks in Sort, and file. It needs nothing set up beyond the phone being on the
-tailnet. Filing again updates the same meeting.
+tailnet. Filing again updates the same meeting. Until Maestro trusts the tailnet the phone is refused
+with "Maestro refused the request: it has to trust this phone first."
 
 ## Development
 

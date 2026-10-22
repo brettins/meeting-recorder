@@ -119,6 +119,19 @@ class TestMeetingActions:
         )
         assert rm.FILE_TO_NOTION in actions
 
+    def test_maestro_filing_needs_written_content(self):
+        kwargs = dict(has_audio=True, has_title=True, can_summarize=False)
+        written = rm.meeting_actions(
+            has_notes=True, has_transcript=False, can_file_to_maestro=True, **kwargs
+        )
+        bare = rm.meeting_actions(
+            has_notes=False, has_transcript=False, can_file_to_maestro=True, **kwargs
+        )
+        off = rm.meeting_actions(has_notes=True, has_transcript=False, **kwargs)
+        assert rm.FILE_TO_MAESTRO in written
+        assert rm.FILE_TO_MAESTRO not in bare
+        assert rm.FILE_TO_MAESTRO not in off
+
     def test_a_transcript_alone_is_enough_to_file(self):
         actions = rm.meeting_actions(
             has_notes=False,

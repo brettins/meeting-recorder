@@ -137,7 +137,7 @@ class MaestroClient(
                 null
             }
             return when (status) {
-                401 -> "Maestro refused this device. Check that it is on the tailnet."
+                401 -> "Maestro refused the request: it has to trust this phone first."
                 404 -> "Nothing at Maestro's address files meetings."
                 else -> detail ?: "Maestro returned HTTP $status."
             }
