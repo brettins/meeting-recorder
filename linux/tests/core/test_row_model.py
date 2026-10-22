@@ -132,6 +132,13 @@ class TestMeetingActions:
         assert rm.FILE_TO_MAESTRO not in bare
         assert rm.FILE_TO_MAESTRO not in off
 
+    def test_row_from_meeting_forwards_the_maestro_flag(self):
+        meeting = make_meeting(has_notes=True)
+        on = rm.row_from_meeting(meeting, can_file_to_maestro=True)
+        off = rm.row_from_meeting(meeting)
+        assert rm.FILE_TO_MAESTRO in on.actions
+        assert rm.FILE_TO_MAESTRO not in off.actions
+
     def test_a_transcript_alone_is_enough_to_file(self):
         actions = rm.meeting_actions(
             has_notes=False,

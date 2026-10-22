@@ -249,18 +249,16 @@ on one meeting item, and each action item in the notes becomes a draft task in S
 There is nothing to set up. Maestro is reached over the tailnet, so the machine has to be on it; no
 URL or token is typed anywhere. Click the send icon on any meeting with notes or a transcript. The
 window lists the action lines it found (under an "Action items" or "Next steps" heading, plus any
-unticked checkbox) so you can untick any that should not become tasks. Filing the same meeting again
-updates it rather than adding a second one, and never rewrites a task that is already there. The
-audio is not sent. For development, `MAESTRO_URL` and `MAESTRO_API_TOKEN` override the address and
+unticked checkbox) so you can untick any that should not become tasks. Filing again updates the meeting
+and leaves existing tasks as they are. The
+notes, transcript and action lines are sent; the audio stays local. For development, `MAESTRO_URL` and `MAESTRO_API_TOKEN` override the address and
 add a token.
 
 Until Maestro trusts the tailnet for `/api/meetings`, it answers 401 and the window says "Maestro
-refused the request: it has to trust this machine first." Nothing else needs changing on this side.
+refused the request: it has to trust this machine first."
 
-This is separate from the notes comment (`maestro_notes_key`, `processing/maestro_notes.py`), which
-posts notes to one ticket and records `maestro_posted` in `meeting.json`. Filing records
-`dispatch_meeting_id` instead, so the two never block or overwrite each other; a meeting that goes
-through both appears once as a comment on the ticket and once as its own meeting item.
+Filing is independent of the notes comment (`maestro_notes_key`). A meeting that gets both appears
+as a comment on the ticket and as its own meeting item.
 
 ### First-Time Setup
 

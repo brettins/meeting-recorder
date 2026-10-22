@@ -184,7 +184,12 @@ def recent_rows(jobs: Iterable[Any]) -> list[RowModel]:
 
 
 def row_from_meeting(
-    meeting, job=None, *, is_recording: bool = False, can_file_to_notion: bool = False
+    meeting,
+    job=None,
+    *,
+    is_recording: bool = False,
+    can_file_to_notion: bool = False,
+    can_file_to_maestro: bool = False,
 ) -> RowModel:
     """A Library row: a scanned meeting, in whatever state its job puts it."""
     state = RECORDING if is_recording else state_for_job(job.status if job else None)
@@ -195,6 +200,7 @@ def row_from_meeting(
         has_title=meeting.title is not None,
         can_summarize=True,
         can_file_to_notion=can_file_to_notion,
+        can_file_to_maestro=can_file_to_maestro,
     )
     # A duration probed from a half-written file is noise, so a row that is
     # still recording shows the clock instead of a length.

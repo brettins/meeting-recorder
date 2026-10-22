@@ -95,7 +95,7 @@
     <string name="cd_more_options">More options</string>
     <string name="action_file_into_maestro">File into Maestro</string>
     <string name="title_file_into_maestro">File into Maestro</string>
-    <string name="desc_file_again">Filing again updates this meeting in Maestro rather than adding another.</string>
+    <string name="desc_file_again">Filing again updates this meeting in Maestro.</string>
     <string name="label_maestro_company">Company (blank files under Personal)</string>
     <string name="label_draft_tasks">Draft tasks</string>
     <string name="desc_draft_tasks">Each ticked line becomes a task in Sort.</string>

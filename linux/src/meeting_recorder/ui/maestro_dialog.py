@@ -73,7 +73,7 @@ class MaestroFileDialog(Adw.Window):
         toolbar.set_content(scroll)
 
         meeting_group = Adw.PreferencesGroup(
-            description="Filing again updates this meeting in Maestro rather than adding another."
+            description="Filing again updates this meeting in Maestro."
         )
         name = meeting_title(getattr(self._meeting, "title", None), self._meeting.date)
         meeting_group.add(Adw.ActionRow(title=GLib.markup_escape_text(name)))
