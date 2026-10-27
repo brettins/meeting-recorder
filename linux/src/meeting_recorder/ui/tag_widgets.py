@@ -24,6 +24,7 @@ from ..config.tags import (
     remove_tag,
     rename_tag,
 )
+from ..utils.gtk_compat import set_tooltip
 
 
 def make_tag_chip(name: str, color: str) -> Gtk.Label:
@@ -150,7 +151,7 @@ class TagManageDialog(Adw.Window):
         self._new_entry.connect("activate", lambda *_: self._add())
         add_btn = Gtk.Button(icon_name="list-add-symbolic")
         add_btn.add_css_class("flat")
-        add_btn.set_tooltip_text("Add tag")
+        set_tooltip(add_btn, "Add tag")
         add_btn.connect("clicked", lambda *_: self._add())
         add_row.append(self._new_entry)
         add_row.append(add_btn)
@@ -209,7 +210,7 @@ class TagManageDialog(Adw.Window):
 
         color_btn = Gtk.MenuButton()
         color_btn.add_css_class("flat")
-        color_btn.set_tooltip_text("Change colour")
+        set_tooltip(color_btn, "Change colour")
         color_btn.set_child(make_tag_swatch(tag.color))
         color_btn.set_popover(self._color_popover(tag))
         row.append(color_btn)
@@ -221,7 +222,7 @@ class TagManageDialog(Adw.Window):
 
         del_btn = Gtk.Button(icon_name="user-trash-symbolic")
         del_btn.add_css_class("flat")
-        del_btn.set_tooltip_text("Delete tag")
+        set_tooltip(del_btn, "Delete tag")
         del_btn.connect("clicked", self._on_delete_clicked, tag.name)
         row.append(del_btn)
 
@@ -241,7 +242,7 @@ class TagManageDialog(Adw.Window):
             btn = Gtk.Button()
             btn.add_css_class("flat")
             btn.set_child(make_tag_swatch(color))
-            btn.set_tooltip_text(color.capitalize())
+            set_tooltip(btn, color.capitalize())
             btn.connect("clicked", self._on_recolor, tag.name, color, pop)
             grid.append(btn)
         pop.set_child(grid)

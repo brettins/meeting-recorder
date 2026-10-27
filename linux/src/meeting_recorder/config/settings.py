@@ -44,7 +44,7 @@ def _config_dir() -> Path:
     return Path(os.path.expanduser(CONFIG_DIR))
 
 
-def load(keyring: KeyringStore | None = None) -> dict[str, Any]:
+def load(keyring: KeyringStore | None = None, *, resolve_key: bool = True) -> dict[str, Any]:
     """Load config, returning defaults merged with stored values.
 
     A ``@keyring`` sentinel in gemini_api_key is resolved from the Secret
@@ -70,7 +70,7 @@ def load(keyring: KeyringStore | None = None) -> dict[str, Any]:
         except Exception as exc:
             logger.warning("Failed to load config: %s", exc)
 
-    if config.get("gemini_api_key") == KEYRING_SENTINEL:
+    if resolve_key and config.get("gemini_api_key") == KEYRING_SENTINEL:
         store = keyring or _get_keyring()
         config["gemini_api_key"] = store.get() or ""
     return config
