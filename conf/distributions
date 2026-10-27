@@ -5,4 +5,4 @@ Suite: stable
 Architectures: amd64 arm64
 Components: main
 Description: Meeting Recorder APT repository
-SignWith: 1DF8D32C5AE20755AE72AE01E9C57763B438F7C4
+SignWith: E455F18BBFE883AC1FF18DB995C1F0C8BB376C93
