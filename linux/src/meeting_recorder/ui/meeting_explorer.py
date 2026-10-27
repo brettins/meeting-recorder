@@ -426,7 +426,9 @@ class MeetingExplorer(Gtk.Box):
 
     def _open_split_dialog(self, meeting: Meeting) -> None:
         window = self.get_root()
-        output_folder = Path(os.path.expanduser(settings.load().get("output_folder", "~/meetings")))
+        output_folder = Path(
+            os.path.expanduser(settings.load(resolve_key=False).get("output_folder", "~/meetings"))
+        )
         dialog = SplitDialog(
             window if isinstance(window, Gtk.Window) else None,
             meeting,
