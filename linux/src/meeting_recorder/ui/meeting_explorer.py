@@ -52,6 +52,7 @@ from meeting_recorder.utils.meeting_scanner import (
 
 from ..core import row_model as rm
 from ..utils.glib_bridge import idle_call
+from ..utils.gtk_compat import set_tooltip
 from .icons import tag_list_icon
 from .meeting_row import MeetingRow, RowListView
 from .notion_dialog import NotionFileDialog
@@ -93,18 +94,18 @@ class MeetingExplorer(Gtk.Box):
         self._filter_ids: list[str | None] = [None]
         self._suppress_filter_signal = False
         self._filter_drop = Gtk.DropDown.new_from_strings(["All meetings"])
-        self._filter_drop.set_tooltip_text("Filter meetings by tag")
+        set_tooltip(self._filter_drop, "Filter meetings by tag")
         self._filter_drop.connect("notify::selected", self._on_filter_changed)
         toolbar.append(self._filter_drop)
 
         manage_btn = Gtk.Button(icon_name=tag_list_icon())
         manage_btn.add_css_class("flat")
-        manage_btn.set_tooltip_text("Manage tags")
+        set_tooltip(manage_btn, "Manage tags")
         manage_btn.connect("clicked", self._on_manage_tags)
         toolbar.append(manage_btn)
 
         refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
-        refresh_btn.set_tooltip_text("Refresh")
+        set_tooltip(refresh_btn, "Refresh")
         refresh_btn.connect("clicked", lambda *_: self.refresh())
         toolbar.append(refresh_btn)
 
@@ -172,7 +173,7 @@ class MeetingExplorer(Gtk.Box):
         """Rescan the output folder and rebuild the meeting list."""
         self._error_label.set_visible(False)
 
-        cfg = settings.load()
+        cfg = settings.load(resolve_key=False)
         output_folder = cfg.get("output_folder", "~/meetings")
         self._registry = parse_tags(cfg.get("tags"))
         self._notion_workspaces = load_workspaces(cfg)

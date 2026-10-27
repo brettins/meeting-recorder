@@ -16,6 +16,7 @@ action buttons are therefore only reconstructed when the action *tuple* changes.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 
 import gi
 
@@ -43,7 +44,7 @@ from ..core.row_model import (
     TAG,
     RowModel,
 )
-from ..utils.gtk_compat import remove_all_children
+from ..utils.gtk_compat import remove_all_children, set_tooltip
 from .icons import notion_icon, split_icon, tag_icon
 from .tag_widgets import make_tag_chip
 
@@ -85,6 +86,7 @@ class MeetingRow(Gtk.ListBoxRow):
         self._rendered_actions: tuple[str, ...] | None = None
         self._rendered_tags: list[str] | None = None
         self._state_css: str | None = None
+        self._drawn: tuple[RowModel, dict[str, str]] | None = None
 
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.set_margin_top(8)
@@ -149,13 +151,16 @@ class MeetingRow(Gtk.ListBoxRow):
         """Re-render for a new model, touching only what actually changed."""
         self.model = model
         self._colors = colors
+        if self._drawn is not None and self._drawn[0] == model and self._drawn[1] == colors:
+            return
+        self._drawn = (replace(model), dict(colors))
 
         self._primary.set_text(model.title)
         self._secondary.set_text(model.subtitle)
         if model.error_msg:
-            self.set_tooltip_text(model.error_msg)
+            set_tooltip(self, model.error_msg)
         else:
-            self.set_tooltip_text(None)
+            set_tooltip(self, None)
 
         busy = model.state in (RECORDING, PROCESSING)
         self._spinner.set_visible(busy)
@@ -216,27 +221,29 @@ class MeetingRow(Gtk.ListBoxRow):
         for action in model.actions:
             if action == SPLIT:
                 btn = Gtk.Button(icon_name=split_icon())
-                btn.set_tooltip_text("Check for long gaps and split into separate meetings")
+                set_tooltip(btn, "Check for long gaps and split into separate meetings")
                 btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
             elif action == FILE_TO_NOTION:
                 btn = Gtk.Button(icon_name=notion_icon())
-                btn.set_tooltip_text("File this meeting into Notion")
+                set_tooltip(btn, "File this meeting into Notion")
                 btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
             elif action == TAG:
                 btn = Gtk.MenuButton(icon_name=tag_icon())
-                btn.set_tooltip_text("Tag this meeting")
+                set_tooltip(btn, "Tag this meeting")
                 if self._tag_popover_factory is not None:
-                    # Attached up front: a Gtk.MenuButton with nothing to show
-                    # renders as a dimmed, dead button.
-                    btn.set_popover(self._tag_popover_factory(model))
+                    btn.set_create_popup_func(self._show_tag_popover)
             else:
                 kind, art, tooltip = _ACTION_SPECS[action]
                 btn = Gtk.Button(label=art) if kind == "label" else Gtk.Button(icon_name=art)
-                btn.set_tooltip_text(tooltip)
+                set_tooltip(btn, tooltip)
                 btn.connect("clicked", lambda *_, a=action: self._on_action(a, self.model))
             btn.add_css_class("flat")
             btn.set_valign(Gtk.Align.CENTER)
             self._actions.append(btn)
+
+    def _show_tag_popover(self, button: Gtk.MenuButton) -> None:
+        """Build the tag popover when it is opened, from the row's current tags."""
+        button.set_popover(self._tag_popover_factory(self.model))
 
     def set_action_sensitive(self, action: str, sensitive: bool) -> None:
         """Grey out one action (e.g. Transcribe, once it has been clicked)."""
