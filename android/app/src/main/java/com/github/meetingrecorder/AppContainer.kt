@@ -3,8 +3,10 @@ package com.github.meetingrecorder
 import android.content.Context
 import android.os.Environment
 import android.os.storage.StorageManager
+import android.util.Log
 import com.github.meetingrecorder.data.Config
 import com.github.meetingrecorder.data.GeminiClient
+import com.github.meetingrecorder.data.MeetingFiling
 import com.github.meetingrecorder.data.MeetingProcessor
 import com.github.meetingrecorder.data.MeetingRepository
 import com.github.meetingrecorder.data.notion.EncryptedNotionTokenStore
@@ -21,7 +23,7 @@ class AppContainer(private val context: Context) {
     val config: Config = Config(context)
 
     val meetingRepository: MeetingRepository =
-        MeetingRepository(File(documentsDirectory(context), "Meetings"))
+        MeetingRepository(File(documentsDirectory(context), "Meetings")) { Log.w("MeetingRepository", it) }
 
     /** Shared Gemini client; it reads the latest key/model/prompts from [config] on every call. */
     val geminiClient: GeminiClient by lazy { GeminiClient(config) }
@@ -30,6 +32,8 @@ class AppContainer(private val context: Context) {
 
     /** Shared processing workflow (transcribe → summarize → title → save) used by the record and detail flows. */
     val meetingProcessor: MeetingProcessor by lazy { MeetingProcessor(geminiClient, meetingRepository) }
+
+    val meetingFiling: MeetingFiling by lazy { MeetingFiling(logWarn = { Log.w("MeetingFiling", it) }) }
 
     /**
      * Resolves the shared `Documents` directory on primary external storage

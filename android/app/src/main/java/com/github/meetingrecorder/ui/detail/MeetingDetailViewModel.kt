@@ -4,6 +4,10 @@ import android.media.MediaPlayer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.meetingrecorder.data.Config
+import com.github.meetingrecorder.data.MaestroClient
+import com.github.meetingrecorder.data.MaestroFiling
+import com.github.meetingrecorder.data.MeetingFiler
+import com.github.meetingrecorder.data.MeetingFiling
 import com.github.meetingrecorder.data.MeetingMeta
 import com.github.meetingrecorder.data.MeetingProcessor
 import com.github.meetingrecorder.util.extensionToMimeType
@@ -17,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 /** Generation (transcribe / summarize) status for the detail screen. */
@@ -26,6 +31,15 @@ sealed interface GenState {
     data class Error(val msg: String) : GenState
 }
 
+/** The "File into Maestro" dialog while it is open. */
+data class FilingDialog(
+    val meetingName: String,
+    val actions: List<String>,
+    val company: String,
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
 // View model for the meeting detail screen. Plain ViewModel — no Context needed (MediaPlayer is
 // context-free); dependencies are constructor-injected via appViewModelFactory. The generation
 // workflows (transcribe/summarize/title/disk writes) live in MeetingProcessor; this class keeps
@@ -33,7 +47,17 @@ sealed interface GenState {
 class MeetingDetailViewModel(
     private val config: Config,
     private val processor: MeetingProcessor,
+    private val filing: MeetingFiling,
+    private val maestroClient: () -> MeetingFiler = { MaestroClient() },
 ) : ViewModel() {
+
+    private val _filingDialog = MutableStateFlow<FilingDialog?>(null)
+    val filingDialog: StateFlow<FilingDialog?> = _filingDialog.asStateFlow()
+
+    private val _filedNotice = MutableStateFlow<String?>(null)
+    val filedNotice: StateFlow<String?> = _filedNotice.asStateFlow()
+
+    private var filingJob: Job? = null
 
     private val _transcript = MutableStateFlow<String?>(null)
     val transcript: StateFlow<String?> = _transcript.asStateFlow()
@@ -88,6 +112,8 @@ class MeetingDetailViewModel(
         timeUpdaterJob = null
         _isPlaying.value = false
         _currentTime.value = "00:00"
+        filingJob?.cancel()
+        _filingDialog.value = null
         val dir = File(meetingPath)
         meetingDir = dir
         _genState.value = GenState.Idle
@@ -197,6 +223,52 @@ class MeetingDetailViewModel(
         if (currentTitle.isNullOrBlank()) {
             processor.generateTitle(notes)?.let { currentTitle = it }
         }
+    }
+
+    /** Opens the filing dialog with the notes' action lines and the default company. */
+    fun openFiling() {
+        if (_filingDialog.value != null) return
+        val date = meetingDir?.let { MaestroFiling.startedAt(it.name) } ?: LocalDateTime.now()
+        _filingDialog.value = FilingDialog(
+            meetingName = MaestroFiling.meetingTitle(currentTitle, date),
+            actions = filing.proposedActions(_notes.value.orEmpty()),
+            company = "",
+        )
+    }
+
+    fun dismissFiling() {
+        if (_filingDialog.value?.busy == true) return
+        _filingDialog.value = null
+    }
+
+    /** Files the meeting with the ticked [actions] under [company]. */
+    fun fileIntoMaestro(actions: List<String>, company: String) {
+        val dialog = _filingDialog.value ?: return
+        if (dialog.busy) return
+        val dir = meetingDir ?: return
+        _filingDialog.value = dialog.copy(busy = true, error = null, company = company)
+        filingJob = viewModelScope.launch {
+            try {
+                val filed = filing.file(
+                    filer = maestroClient(),
+                    dir = dir,
+                    title = currentTitle,
+                    durationSeconds = durationSeconds,
+                    actions = actions,
+                    company = company,
+                )
+                _filingDialog.value = null
+                _filedNotice.value = MaestroFiling.filedSummary(filed)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _filingDialog.value = _filingDialog.value?.copy(busy = false, error = e.message ?: "Filing failed.")
+            }
+        }
+    }
+
+    fun consumeFiledNotice() {
+        _filedNotice.value = null
     }
 
     fun playPause() {

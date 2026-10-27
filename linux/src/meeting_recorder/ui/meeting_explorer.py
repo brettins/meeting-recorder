@@ -53,6 +53,7 @@ from meeting_recorder.utils.meeting_scanner import (
 from ..core import row_model as rm
 from ..utils.glib_bridge import idle_call
 from .icons import tag_list_icon
+from .maestro_dialog import MaestroFileDialog
 from .meeting_row import MeetingRow, RowListView
 from .notion_dialog import NotionFileDialog
 from .split_dialog import SplitDialog
@@ -216,6 +217,7 @@ class MeetingExplorer(Gtk.Box):
                 jobs_by_dir.get(str(m.path)),
                 is_recording=str(m.path) == self._recording_dir,
                 can_file_to_notion=bool(self._notion_workspaces),
+                can_file_to_maestro=True,
             )
             for m in meetings
         ]
@@ -266,6 +268,8 @@ class MeetingExplorer(Gtk.Box):
             self._open_split_dialog(meeting)
         elif action == rm.FILE_TO_NOTION:
             self._open_notion_dialog(meeting)
+        elif action == rm.FILE_TO_MAESTRO:
+            self._open_maestro_dialog(meeting)
         elif action == rm.SUMMARIZE:
             if row is not None:
                 row.set_action_sensitive(rm.SUMMARIZE, False)
@@ -464,6 +468,15 @@ class MeetingExplorer(Gtk.Box):
             window if isinstance(window, Gtk.Window) else None,
             meeting,
             self._notion_workspaces,
+            on_finished=self._show_notice,
+        )
+        dialog.present()
+
+    def _open_maestro_dialog(self, meeting: Meeting) -> None:
+        window = self.get_root()
+        dialog = MaestroFileDialog(
+            window if isinstance(window, Gtk.Window) else None,
+            meeting,
             on_finished=self._show_notice,
         )
         dialog.present()
