@@ -10,9 +10,10 @@ import gi
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
+from ..core import activity_pin  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
-_ACTIVITY_PROPERTY = "_KDE_NET_WM_ACTIVITIES"
 _XPROP_TIMEOUT_SECONDS = 2
 
 
@@ -27,7 +28,7 @@ def current_activity() -> str | None:
             "CurrentActivity",
             None,
             GLib.VariantType("(s)"),
-            Gio.DBusCallFlags.NONE,
+            Gio.DBusCallFlags.NO_AUTO_START,
             500,
             None,
         )
@@ -36,19 +37,20 @@ def current_activity() -> str | None:
     return reply.unpack()[0] or None
 
 
-def activity_command(xid: int, activity: str) -> list[str]:
-    """Build the xprop call that pins a window to one activity."""
-    return [
-        "xprop",
-        "-id",
-        str(xid),
-        "-f",
-        _ACTIVITY_PROPERTY,
-        "8s",
-        "-set",
-        _ACTIVITY_PROPERTY,
-        activity,
-    ]
+def _xprop(args: list[str]) -> str:
+    done = subprocess.run(
+        args, check=False, timeout=_XPROP_TIMEOUT_SECONDS, capture_output=True, text=True
+    )
+    return done.stdout
+
+
+def pin_to_current_activity(xid: int) -> None:
+    """Pin the window to the current activity unless it is on all activities or already there."""
+    activity = current_activity()
+    if not activity:
+        return
+    if activity_pin.needs_pin(_xprop(activity_pin.read_command(xid)), activity):
+        _xprop(activity_pin.set_command(xid, activity))
 
 
 def bring_to_current_workspace(window) -> None:
@@ -65,13 +67,6 @@ def bring_to_current_workspace(window) -> None:
         return
     try:
         surface.move_to_current_desktop()
-        activity = current_activity()
-        if activity:
-            subprocess.run(
-                activity_command(surface.get_xid(), activity),
-                check=False,
-                timeout=_XPROP_TIMEOUT_SECONDS,
-                capture_output=True,
-            )
+        pin_to_current_activity(surface.get_xid())
     except (OSError, subprocess.SubprocessError, GLib.Error) as exc:
         logger.debug("Could not follow the current workspace: %s", exc)

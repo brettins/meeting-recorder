@@ -18,6 +18,7 @@ Requires:       libnotify
 Requires:       (ffmpeg or ffmpeg-free)
 Requires:       pulseaudio-utils
 Requires:       curl
+Recommends:     xprop
 
 %description
 Records meetings, transcribes audio using Google Gemini or local Whisper,
