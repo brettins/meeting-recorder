@@ -16,6 +16,7 @@ depends=(
     'libpulse'
     'curl'
 )
+optdepends=('xorg-xprop: open the window on the current KDE activity')
 install=meeting-recorder.install
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=('SKIP')
