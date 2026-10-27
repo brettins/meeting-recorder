@@ -319,8 +319,32 @@ jobs:
   #
   # Unit tests run on the JVM — no emulator or device required.
   # assembleDebug verifies the full Kotlin/Compose compile succeeds.
+  # Skipped (reported as skipped, which satisfies a required check) when the PR
+  # touches nothing under android/ and neither Android workflow.
+  android-changes:
+    name: Android files changed
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.diff.outputs.android }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        run: |
+          changed=$(git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          if echo "$changed" | grep -qE '^(android/|\.github/workflows/(ci|release-android)\.yml$)'; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-android:
     name: Android unit tests + debug build
+    needs: android-changes
+    if: needs.android-changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
