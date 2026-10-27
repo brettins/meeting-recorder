@@ -153,7 +153,7 @@ class MeetingRow(Gtk.ListBoxRow):
         self._colors = colors
         if self._drawn is not None and self._drawn[0] == model and self._drawn[1] == colors:
             return
-        self._drawn = (replace(model), dict(colors))
+        self._drawn = (replace(model, tags=list(model.tags)), dict(colors))
 
         self._primary.set_text(model.title)
         self._secondary.set_text(model.subtitle)
@@ -242,8 +242,9 @@ class MeetingRow(Gtk.ListBoxRow):
             self._actions.append(btn)
 
     def _show_tag_popover(self, button: Gtk.MenuButton) -> None:
-        """Build the tag popover when it is opened, from the row's current tags."""
-        button.set_popover(self._tag_popover_factory(self.model))
+        """Build the tag popover the first time it is opened; later opens reuse it."""
+        if button.get_popover() is None:
+            button.set_popover(self._tag_popover_factory(self.model))
 
     def set_action_sensitive(self, action: str, sensitive: bool) -> None:
         """Grey out one action (e.g. Transcribe, once it has been clicked)."""

@@ -40,12 +40,12 @@ def set_tooltip(widget: Gtk.Widget, text: str | None) -> None:
     if getattr(widget, "_tip_text", None) == text and hasattr(widget, "_tip_text"):
         return
     widget._tip_text = text
-    widget.set_has_tooltip(text is not None)
+    widget.set_has_tooltip(bool(text))
     if not getattr(widget, "_tip_connected", False):
         widget._tip_connected = True
 
         def _query(w, _x, _y, _keyboard, tooltip):
-            if w._tip_text is None:
+            if not w._tip_text:
                 return False
             tooltip.set_text(w._tip_text)
             return True
@@ -53,3 +53,5 @@ def set_tooltip(widget: Gtk.Widget, text: str | None) -> None:
         widget.connect("query-tooltip", _query)
     if text:
         widget.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text])
+    else:
+        widget.reset_property(Gtk.AccessibleProperty.DESCRIPTION)

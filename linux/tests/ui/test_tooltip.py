@@ -37,3 +37,17 @@ def test_set_tooltip_connects_once():
     set_tooltip(btn, "a")
     set_tooltip(btn, "b")
     assert btn._tip_text == "b"
+
+
+def test_set_tooltip_none_resets_after_text():
+    btn = _button()
+    set_tooltip(btn, "x")
+    set_tooltip(btn, None)
+    assert btn._tip_text is None
+    assert not btn.get_has_tooltip()
+
+
+def test_set_tooltip_empty_string_is_off():
+    btn = _button()
+    set_tooltip(btn, "")
+    assert not btn.get_has_tooltip()
