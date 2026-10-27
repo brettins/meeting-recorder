@@ -254,8 +254,8 @@ and leaves existing tasks as they are. The
 notes, transcript and action lines are sent; the audio stays local. For development, `MAESTRO_URL` and `MAESTRO_API_TOKEN` override the address and
 add a token.
 
-Until Maestro trusts the tailnet for `/api/meetings`, it answers 401 and the window says "Maestro
-refused the request: it has to trust this machine first."
+Maestro accepts `/api/meetings` from the tailnet without a token; off the tailnet it answers 401 and the
+window says "Maestro refused the request: it has to trust this machine first."
 
 Filing is independent of the notes comment (`maestro_notes_key`). A meeting that gets both appears
 as a comment on the ticket and as its own meeting item.
@@ -474,7 +474,7 @@ set -x KEY_PASSWORD your_key_pass
 
 Open a meeting, choose **File into Maestro** from the three-dot menu, tick the action lines that
 should become draft tasks in Sort, and file. It needs nothing set up beyond the phone being on the
-tailnet. Filing again updates the same meeting. Until Maestro trusts the tailnet the phone is refused
+tailnet. Filing again updates the same meeting. Off the tailnet the phone is refused
 with "Maestro refused the request: it has to trust this phone first."
 
 ## Development
