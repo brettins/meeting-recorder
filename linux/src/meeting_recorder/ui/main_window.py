@@ -55,6 +55,7 @@ from ..core.window_close import CLOSE_HIDE, resolve_close_action
 from ..core.wire import Snapshot, snapshot_from_json
 from ..utils.gtk_compat import remove_all_children
 from ..utils.recording_import import resolve_existing_recording_target
+from .current_workspace import bring_to_current_workspace
 from .icons import tag_icon
 from .meeting_explorer import MeetingExplorer
 from .meeting_row import RowListView, section_group
@@ -699,6 +700,7 @@ class MainWindow(Adw.ApplicationWindow):
         Gtk.get_current_event_time(); focus is now mediated by the compositor,
         so present() is the supported path (left-click-to-focus is best-effort
         on Wayland/GNOME)."""
+        bring_to_current_workspace(self)
         self.set_visible(True)
         self.unminimize()
         self.present()
