@@ -8,10 +8,10 @@ Maintainer: Meeting Recorder <noreply@github.com>
 Priority: optional
 Section: utils
 Filename: pool/main/m/meeting-recorder/meeting-recorder_1.2.14_all.deb
-Size: 171418
-SHA256: 0299d65e31ea13dfa9e8b362e6b84ed0aba2a49882fc156ffe89c7c0167b953e
-SHA1: fe60757cfd163bb6a869d8eb636304f17cdca5fd
-MD5sum: 6a26369f9c2158f8a4d50a06543d0df4
+Size: 171420
+SHA256: f7b94a783a8e8889d9ee6da479dc5232ba7d19ee51e263c4ed582c26d1fb170f
+SHA1: bfd6f333bf5c07d4c82b6ad7df9ad45356c6f78f
+MD5sum: 95dbf9a62e8a722dfd4c7c00f3ab94ea
 Description: Meeting recorder with AI transcription and summarization
  Records meetings, transcribes audio using Google Gemini or local Whisper,
  and generates structured notes with Gemini or local Ollama.
