@@ -9,6 +9,8 @@ import com.github.meetingrecorder.data.GeminiClient
 import com.github.meetingrecorder.data.MeetingFiling
 import com.github.meetingrecorder.data.MeetingProcessor
 import com.github.meetingrecorder.data.MeetingRepository
+import com.github.meetingrecorder.data.notion.EncryptedNotionTokenStore
+import com.github.meetingrecorder.data.notion.NotionTokenStore
 import java.io.File
 
 /**
@@ -16,7 +18,7 @@ import java.io.File
  * than a DI framework. Owned by [MeetingRecorderApp]; ViewModels receive these dependencies via
  * constructor injection through [appViewModelFactory] instead of casting `application`.
  */
-class AppContainer(context: Context) {
+class AppContainer(private val context: Context) {
 
     val config: Config = Config(context)
 
@@ -25,6 +27,8 @@ class AppContainer(context: Context) {
 
     /** Shared Gemini client; it reads the latest key/model/prompts from [config] on every call. */
     val geminiClient: GeminiClient by lazy { GeminiClient(config) }
+
+    val notionTokenStore: NotionTokenStore by lazy { EncryptedNotionTokenStore(context.applicationContext) }
 
     /** Shared processing workflow (transcribe → summarize → title → save) used by the record and detail flows. */
     val meetingProcessor: MeetingProcessor by lazy { MeetingProcessor(geminiClient, meetingRepository) }

@@ -13,3 +13,9 @@
 # Kotlin coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+
+# Tink (androidx.security:security-crypto) references errorprone annotations absent at runtime
+-dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
+-dontwarn com.google.errorprone.annotations.CheckReturnValue
+-dontwarn com.google.errorprone.annotations.Immutable
+-dontwarn com.google.errorprone.annotations.RestrictedApi

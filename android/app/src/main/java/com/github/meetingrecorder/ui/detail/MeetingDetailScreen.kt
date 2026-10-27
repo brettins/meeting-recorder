@@ -11,6 +11,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -39,6 +40,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,6 +91,7 @@ fun MeetingDetailScreen(
             onDismiss = viewModel::dismissFiling,
         )
     }
+    var showNotionDialog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -101,6 +104,14 @@ fun MeetingDetailScreen(
                     }
                 },
                 actions = {
+                    if (canFile && !processing) {
+                        IconButton(onClick = { showNotionDialog = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(R.string.action_file_into_notion),
+                            )
+                        }
+                    }
                     if ((canRegenerate || canFile) && !processing) {
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_options))
@@ -130,6 +141,9 @@ fun MeetingDetailScreen(
             )
         },
     ) { padding ->
+        if (showNotionDialog) {
+            NotionFilingDialog(meetingPath = meetingPath, onDismiss = { showNotionDialog = false })
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(
